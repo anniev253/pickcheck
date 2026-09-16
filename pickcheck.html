@@ -1,0 +1,1110 @@
+<title>Oleum Orders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Nunito+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --navy:#223549; --navy-2:#1a2a3a; --gold:#c0a341; --gold-400:#d4b84e; --gold-600:#a08a30;
+    --ground:#f0f2f5; --surface:#fff; --surface-2:#f8fafc; --surface-3:#e8ecf0; --line:#dbe3ec;
+    --text:#1a1d21; --text-2:#64748b; --muted:#94a3b8;
+    --go:#16a34a; --go-bg:#dcfce7; --go-line:#86efac;
+    --warn:#b45309; --warn-bg:#fef3c7; --warn-line:#fcd34d;
+    --err:#dc2626; --err-bg:#fee2e2; --err-line:#fca5a5;
+    --sans:"Nunito Sans",Inter,system-ui,-apple-system,sans-serif;
+    --head:"Nunito","Nunito Sans",system-ui,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --bar:52px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;max-width:100vw;overflow-x:clip}   /* clip, not hidden: hidden would break position:sticky */
+  body{background:var(--ground);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.45;min-height:100vh;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+  button{font-family:inherit;cursor:pointer;border:none}
+  input{font-family:var(--sans);font-size:15px;background:var(--surface-2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0;max-width:100%}
+  input:focus{outline:2px solid var(--gold);outline-offset:1px;background:#fff}
+  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  h1,h2,h3{font-family:var(--head);font-weight:800;letter-spacing:-.01em;text-wrap:balance;margin:0;color:var(--navy)}
+
+  /* ---------- top bar ---------- */
+  .appbar{position:fixed;top:0;left:0;right:0;height:var(--bar);background:var(--navy);color:#fff;display:flex;align-items:center;gap:12px;padding:0 16px;z-index:30}
+  .appbar img{height:22px;width:auto;display:block}
+  .appbar .eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-400);font-weight:700;margin-top:2px}
+  .appbar .spacer{flex:1}
+  .appbar .who{font-size:13px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw}
+  .appbar button{background:transparent;color:#cbd5e1;font-size:13px;font-weight:600;padding:6px 8px;border-radius:6px}
+  .appbar button:hover{background:rgba(255,255,255,.08);color:#fff}
+  .screen{display:none;max-width:560px;margin:0 auto;padding:calc(var(--bar) + 16px) 16px 96px}
+  .screen.active{display:block}
+
+  /* ---------- shared ---------- */
+  .btn{display:block;width:100%;padding:14px 18px;border-radius:10px;font-family:var(--sans);font-size:16px;font-weight:700;background:var(--surface);color:var(--navy);border:1px solid var(--line);box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .btn:hover{background:var(--surface-2)}
+  .btn.primary{background:var(--gold);color:#fff;border-color:var(--gold)}
+  .btn.primary:hover{background:var(--gold-600);border-color:var(--gold-600)}
+  .btn.small{font-size:14px;padding:9px 14px;width:auto;display:inline-block}
+  .btn.danger{background:var(--err-bg);color:var(--err);border-color:var(--err-line)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .stack{display:flex;flex-direction:column;gap:12px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--text-2)}
+  .tiny{font-size:13px}
+  .mono{font-family:var(--mono)}
+  .label{font-size:12px;font-weight:700;color:var(--text-2);display:block;margin-bottom:6px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  .pill{font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px;white-space:nowrap;background:var(--surface-3);color:var(--text-2)}
+  .pill.ok{background:var(--go-bg);color:var(--go)}
+  .pill.warn{background:var(--warn-bg);color:var(--warn)}
+  .pill.err{background:var(--err-bg);color:var(--err)}
+  .toolbar{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
+  .errbox{background:var(--err-bg);border:1px solid var(--err-line);color:#991b1b;border-radius:10px;padding:12px 14px;display:none}
+  .pagetitle{margin:4px 0 16px}
+  .pagetitle h2{font-size:24px}
+  .pagetitle .sub{color:var(--text-2);font-size:14px;margin-top:2px}
+
+  /* ---------- sign in ---------- */
+  #scr-login{max-width:none;padding:0;min-height:100vh;background:var(--navy);display:none;align-items:center;justify-content:center}
+  #scr-login.active{display:flex}
+  .loginwrap{width:100%;max-width:400px;padding:24px 16px;text-align:center}
+  .loginwrap .mark{height:44px;width:auto}
+  .loginwrap .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-400);font-weight:700;margin:8px 0 28px}
+  .logincard{background:#fff;border-radius:14px;padding:26px 24px 24px;text-align:left;box-shadow:0 25px 50px -12px rgba(0,0,0,.35)}
+  .logincard h2{font-size:22px;text-align:center;color:var(--text)}
+  .logincard .welcome{text-align:center;color:var(--text-2);font-size:14px;margin:4px 0 20px}
+  .logincard input{width:100%;font-size:16px}
+  .logincard .btn{margin-top:18px}
+  .loginfoot{color:#94a3b8;font-size:13px;margin-top:26px}
+
+  /* ---------- home ---------- */
+  .orderentry{display:flex;gap:8px}
+  .orderentry input{flex:1 1 0;width:100%;font-size:22px;padding:10px 12px;letter-spacing:.04em;font-weight:700;color:var(--navy)}
+  .orderentry button{width:auto;padding:0 18px;flex-shrink:0}
+  .recent{display:flex;flex-direction:column;gap:8px}
+  .recentitem{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+  .recentitem:hover{border-color:var(--gold-400)}
+  .recentitem .no{font-family:var(--head);font-size:18px;font-weight:800;color:var(--navy)}
+  .recentitem .cust{color:var(--text-2);font-size:14px}
+  .recentitem.notready{opacity:.6}
+  .recentitem .date{font-size:12px;color:var(--muted);white-space:nowrap}
+  .sectionhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .sectionhead .label{margin:0}
+  .sectionhead button{background:none;color:var(--gold-600);font-weight:700;font-size:13px;padding:2px 4px}
+  .chooser{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+  .health{font-size:12px;color:var(--muted);margin-top:18px;display:flex;gap:8px;align-items:center}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex-shrink:0}
+  .dot.ok{background:var(--go)} .dot.bad{background:var(--err)}
+
+  /* ---------- pick ---------- */
+  .pickhead{position:sticky;top:var(--bar);background:var(--ground);padding:8px 0 10px;z-index:5;border-bottom:1px solid var(--line);margin-bottom:12px}
+  .pickhead .order{font-family:var(--head);font-size:22px;font-weight:800;color:var(--navy);overflow-wrap:anywhere}
+  .pickhead .order .pill{vertical-align:middle}
+  .pickhead .cust{color:var(--text-2);font-size:14px}
+  .progressbar{height:8px;background:var(--surface-3);border-radius:4px;margin-top:8px;overflow:hidden}
+  .progressbar>div{height:100%;background:var(--gold);width:0%;transition:width .2s}
+  .progresstext{font-size:13px;color:var(--text-2);margin-top:4px;display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
+  .lines{display:flex;flex-direction:column;gap:10px}
+  .lineitem{background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .lineitem .name{font-weight:700;font-size:16px;overflow-wrap:anywhere;color:var(--text)}
+  .lineitem .sub{font-size:13px;color:var(--text-2);margin-top:2px;overflow-wrap:anywhere}
+  .lineitem .sub .loc{color:var(--gold-600);font-weight:700}
+  .lineitem .sub .sec{color:var(--text-2);font-style:italic}
+  .lineitem .lots{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .lineitem .lot4{font-family:var(--mono);font-size:16px;font-weight:700;line-height:1.2;color:#fff;letter-spacing:.04em;font-variant-numeric:tabular-nums;background:var(--navy);border-radius:6px;padding:3px 8px}
+  .lineitem .lot4 small{font-size:11px;font-weight:400;color:#cbd5e1;margin-right:2px}
+  .lineitem .lot4 .lq{font-size:11px;font-weight:600;color:#cbd5e1;margin-left:6px;letter-spacing:0}
+  .lineitem .lot4.full{background:var(--go)}
+  .lineitem .count{font-family:var(--mono);font-size:22px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--navy)}
+  .lineitem .count .of{color:var(--muted);font-size:14px}
+  .lineitem.partial{border-left-color:var(--gold)}
+  .lineitem.done{border-left-color:var(--go);background:linear-gradient(90deg,var(--go-bg) 0%,var(--surface) 40%)}
+  .lineitem.done .count{color:var(--go)}
+  .lineitem.short{border-left-color:var(--warn);background:linear-gradient(90deg,var(--warn-bg) 0%,var(--surface) 40%)}
+  .lineitem.over{border-left-color:var(--err)}
+  .lineitem.noalloc{border-left-color:var(--err);border-style:dashed}
+  .scanfeed{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px;font-size:14px;display:flex;flex-direction:column;gap:8px;z-index:6;padding-bottom:max(10px,env(safe-area-inset-bottom));box-shadow:0 -4px 12px rgba(15,23,42,.06)}
+  .scanfeed .feedrow{display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .scanfeed .last{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
+  .keyform{display:none;gap:8px}
+  .keyform.open{display:flex}
+  .keyform input{flex:1;font-size:18px;letter-spacing:.04em;font-family:var(--mono)}
+  .keyform button{width:auto;padding:0 18px}
+  /* Scan result + completion banner stay pinned under the order header while the list scrolls */
+  .pinned{position:sticky;top:calc(var(--bar) + var(--headh,118px));z-index:4;background:var(--ground)}
+  .pinned:not(:empty){padding-bottom:2px}
+  .lineitem.justscanned{box-shadow:0 0 0 3px var(--gold-400)}
+  .donesep{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:10px 4px 2px;border-top:1px dashed var(--line);margin-top:6px}
+  .donebanner{display:none;background:var(--go);color:#fff;border-radius:14px;padding:18px 16px;margin-bottom:12px;text-align:center;box-shadow:0 8px 24px rgba(22,163,74,.35)}
+  .donebanner.show{display:block;animation:donepop .45s ease-out}
+  .donebanner .big{font-family:var(--head);font-size:30px;font-weight:800;line-height:1.1}
+  .donebanner .sub{font-size:14px;opacity:.92;margin:6px 0 14px}
+  .donebanner .btn{background:#fff;color:#166534;border-color:#fff;font-size:18px;padding:14px}
+  @keyframes donepop{0%{transform:scale(.92);opacity:0}60%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
+  @media (prefers-reduced-motion:reduce){.donebanner.show{animation:none}}
+  .result{display:none;border-radius:12px;padding:14px 16px;margin-bottom:12px;font-family:var(--head);font-size:22px;font-weight:800;line-height:1.15}
+  .result .sub{display:block;font-family:var(--sans);font-size:13px;font-weight:600;margin-top:4px;opacity:.9;overflow-wrap:anywhere}
+  .result.ok{display:block;background:var(--go-bg);color:#166534;border:1px solid var(--go-line)}
+  .result.err{display:block;background:var(--err-bg);color:#991b1b;border:2px solid var(--err)}
+  .flash{position:fixed;inset:0;pointer-events:none;opacity:0;z-index:50}
+  .flash.go{background:var(--go)} .flash.err{background:var(--err)}
+  .flash.show{animation:flashout .5s ease-out}
+  .flash.err.show{animation:flashout .9s ease-out}
+  @keyframes flashout{0%{opacity:.45}100%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){.flash.show{animation:none;opacity:0}.progressbar>div{transition:none}}
+
+  /* ---------- camera scanner ---------- */
+  .camwrap{position:fixed;inset:0;background:#000;display:none;z-index:60;flex-direction:column}
+  .camwrap.open{display:flex}
+  .camwrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .camframe{position:absolute;left:50%;top:44%;width:min(62vw,340px);aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid var(--gold-400);border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.35);pointer-events:none}
+  .camwrap.photo .camframe{width:92vw;max-width:560px;aspect-ratio:2.6;top:34%}
+  .found{position:absolute;left:10px;right:10px;top:50%;background:#fff;border-radius:14px;padding:16px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4);display:none;z-index:2}
+  .found.show{display:block}
+  .found .big{font-family:var(--head);font-size:36px;font-weight:800;color:var(--navy);letter-spacing:.02em}
+  .found .cust{color:var(--text-2);font-size:14px;margin:2px 0 14px;min-height:1.4em}
+  .found .btns{display:grid;grid-template-columns:1fr 2fr;gap:10px}
+  .found .btns .btn{width:100%;padding:16px 10px;font-size:18px}
+  .cambottom .btn{padding:14px 18px;font-size:16px}
+  .camtop{position:absolute;top:0;left:0;right:0;padding:max(14px,env(safe-area-inset-top)) 16px 14px;background:linear-gradient(rgba(0,0,0,.7),transparent);color:#fff}
+  .camstatus{display:block;font-weight:700;font-size:16px;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  .camstatus.ok{color:#86efac} .camstatus.err{color:#fca5a5}
+  .camhint{font-size:13px;color:#cbd5e1;margin-top:4px}
+  .cambottom{position:absolute;bottom:0;left:0;right:0;display:flex;gap:10px;justify-content:center;padding:14px 16px max(18px,env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.75))}
+  .cambottom .btn{width:auto;min-width:120px}
+
+  /* ---------- sheet ---------- */
+  .sheetwrap{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;z-index:40;align-items:flex-end}
+  .sheetwrap.open{display:flex}
+  .sheet{background:var(--surface);border-radius:16px 16px 0 0;padding:18px 16px 26px;width:100%;max-width:560px;margin:0 auto;max-height:88vh;overflow-y:auto;box-shadow:0 -10px 40px rgba(15,23,42,.2)}
+  .sheet h3{font-size:20px}
+  .lot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .lot .bc{font-family:var(--mono);font-size:13px;color:var(--text-2)}
+  .lot .bc b{color:var(--navy);font-size:15px}
+  .lot .loc{font-size:12px;color:var(--gold-600);font-weight:700}
+  .lot .n{font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:700;color:var(--navy)}
+  .lot .n.ok{color:var(--go)}
+  .lot button{padding:7px 12px;font-size:13px;font-weight:700;background:var(--surface-2);color:var(--navy);border:1px solid var(--line);border-radius:6px}
+  .padgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  .padgrid button{padding:15px;font-family:var(--mono);font-size:22px;font-weight:700;background:var(--surface-2);color:var(--navy);border:1px solid var(--line);border-radius:8px}
+  .qtydisplay{font-family:var(--mono);font-size:34px;font-weight:700;text-align:center;padding:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;margin-top:12px;font-variant-numeric:tabular-nums;color:var(--navy)}
+
+  /* ---------- summary ---------- */
+  .summaryline{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:15px}
+  .summaryline:last-child{border-bottom:none}
+</style>
+
+<div class="flash" id="flash"></div>
+
+<!-- ============ SIGN IN ============ -->
+<section class="screen" id="scr-login">
+  <div class="loginwrap">
+    <img class="mark" src="/static/oleum-wordmark-white.png" alt="Oleum">
+    <div class="eyebrow">Orders</div>
+    <form class="logincard" onsubmit="event.preventDefault();App.signIn()">
+      <h2>Sign in</h2>
+      <div class="welcome">Welcome back to Oleum Orders.</div>
+      <span class="label">Password</span>
+      <input type="password" id="loginPw" placeholder="Enter the team password" autocomplete="current-password">
+      <div class="errbox" id="loginErr" style="margin-top:12px"></div>
+      <button class="btn primary" type="submit" id="loginBtn">Sign in</button>
+    </form>
+    <div class="loginfoot">Trouble signing in? Ask an admin for the team password.</div>
+  </div>
+</section>
+
+<!-- ============ TOP BAR ============ -->
+<div class="appbar" id="appbar" style="display:none">
+  <img src="/static/oleum-wordmark-white.png" alt="Oleum">
+  <span class="eyebrow">Orders</span>
+  <span class="spacer"></span>
+  <span class="who" id="barPicker"></span>
+  <button onclick="App.setPicker()" title="Change picker">✎</button>
+  <button onclick="App.signOut()" id="signOutBtn">Sign out</button>
+</div>
+
+<!-- ============ HOME ============ -->
+<section class="screen" id="scr-home">
+  <div class="pagetitle"><h2>Pick an order</h2><div class="sub">Take a photo of the pick list, or type the order number.</div></div>
+  <div class="stack">
+    <button class="btn primary cambtn" onclick="App.openCamera('photo')">📷 Photo of pick list</button>
+    <div class="card">
+      <span class="label">Order number</span>
+      <form class="orderentry" onsubmit="event.preventDefault();App.loadOrder(document.getElementById('orderNo').value)">
+        <input id="orderNo" inputmode="numeric" pattern="[0-9]*" placeholder="15685" autocomplete="off">
+        <button class="btn primary" type="submit" id="loadBtn">Load</button>
+      </form>
+      <div class="errbox" id="homeErr" style="margin-top:12px"></div>
+    </div>
+    <div id="chooserWrap" class="card" style="display:none">
+      <span class="label">That lot is on more than one open order — pick one</span>
+      <div class="chooser" id="chooserList"></div>
+    </div>
+    <div id="recentWrap" style="display:none">
+      <span class="label">Recent orders on this device</span>
+      <div class="recent" id="recentList"></div>
+    </div>
+  </div>
+  <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">Checking connection…</span></div>
+</section>
+
+<!-- ============ PICK ============ -->
+<section class="screen" id="scr-pick">
+  <div class="pickhead">
+    <div class="row" style="justify-content:space-between;flex-wrap:nowrap">
+      <div style="min-width:0">
+        <div class="order">ORD-<span id="pickOrder"></span> <span class="pill" id="pickStatus"></span></div>
+        <div class="cust" id="pickCust"></div>
+      </div>
+      <div class="row" style="flex-wrap:nowrap;flex-shrink:0;gap:6px">
+        <button class="btn small" onclick="App.goHome()">← Back</button>
+        <button class="btn small primary" onclick="App.finishPick()">Finish</button>
+      </div>
+    </div>
+    <div class="progressbar"><div id="progFill"></div></div>
+    <div class="progresstext"><span id="progUnits"></span><span id="progLines"></span></div>
+  </div>
+  <div class="errbox" id="pickWarn" style="margin-bottom:12px"></div>
+  <div class="pinned" id="pinned">
+    <div class="donebanner" id="doneBanner">
+      <div class="big">✓ Order complete</div>
+      <div class="sub" id="doneText"></div>
+      <button class="btn" onclick="App.finishPick()">Finish &amp; verify</button>
+    </div>
+    <div class="result" id="scanResult"></div>
+  </div>
+  <div class="lines" id="lineList"></div>
+  <div class="toolbar" style="margin-top:18px">
+    <button class="btn small" onclick="App.refreshOrder()">Refresh from Cultivera</button>
+    <button class="btn small" onclick="window.open('/picklist/' + App.currentOrderNo(), '_blank')">Print pick list</button>
+    <button class="btn small" onclick="App.goHome()">Home</button>
+  </div>
+  <div class="scanfeed">
+    <form class="keyform" id="keyForm" onsubmit="event.preventDefault();App.submitKeyEntry()">
+      <input id="keyIn" inputmode="numeric" pattern="[0-9]*" placeholder="Barcode or last 5+ digits" autocomplete="off">
+      <button class="btn small primary" type="submit">Go</button>
+    </form>
+    <div class="feedrow">
+      <span class="last" id="lastScan">Ready — scan any item</span>
+      <div class="row" style="flex-wrap:nowrap;flex-shrink:0;gap:6px">
+        <button class="btn small primary cambtn" onclick="App.openCamera('pick')">📷 Camera</button>
+        <button class="btn small" onclick="App.openKeyEntry()">Key in</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CAMERA SCANNER ============ -->
+<div class="camwrap" id="camWrap">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <div class="camframe" id="camFrame"></div>
+  <div class="camtop"><span class="camstatus" id="camStatus">Starting camera…</span><div class="camhint" id="camHint">Fill the box with the QR code. It scans automatically.</div></div>
+  <div class="found" id="camFound">
+    <div class="tiny muted" id="camFoundLabel">Order number found</div>
+    <div class="big" id="camFoundNo"></div>
+    <div class="cust" id="camFoundCust"></div>
+    <div class="btns"><button class="btn" onclick="App.photoRetake()">Retake</button><button class="btn primary" id="camFoundOpen" onclick="App.photoOpen()">Open order</button></div>
+  </div>
+  <div class="cambottom">
+    <button class="btn" id="camTorch" onclick="App.toggleTorch()" style="display:none;width:auto">💡 Light</button>
+    <button class="btn primary" id="camCapture" onclick="App.capturePhoto()" style="display:none;width:auto;flex:1;max-width:320px">📸 Read order number</button>
+    <button class="btn" id="camDone" onclick="App.closeCamera()" style="width:auto">Done</button>
+  </div>
+</div>
+
+<!-- ============ LINE SHEET ============ -->
+<div class="sheetwrap" id="sheetWrap" onclick="if(event.target===this)App.closeSheet()">
+  <div class="sheet">
+    <h3 id="sheetName"></h3>
+    <div class="tiny" id="sheetMeta" style="color:var(--text-2);margin:4px 0 8px"></div>
+    <div id="sheetLots"></div>
+    <div class="qtydisplay" id="qtyDisplay" style="display:none">0</div>
+    <div class="padgrid" id="qtyPad" style="display:none"></div>
+    <div class="stack" style="margin-top:14px" id="sheetActions"></div>
+  </div>
+</div>
+
+<!-- ============ SUMMARY ============ -->
+<section class="screen" id="scr-summary">
+  <div class="pagetitle"><h2>Verification</h2></div>
+  <div class="card" id="sumVerdict" style="margin-bottom:14px"></div>
+  <div class="card" style="padding:0" id="sumLines"></div>
+  <div class="toolbar" style="margin-top:16px">
+    <button class="btn small" onclick="App.copyReport()">Copy report</button>
+    <button class="btn small" onclick="App.backToPick()">Back to picking</button>
+    <button class="btn small" onclick="App.goHome()">Home</button>
+    <button class="btn small danger" onclick="App.clearOrder()">Clear order</button>
+  </div>
+</section>
+
+<script>
+const App = (() => {
+  const LS_KEY = 'pickcheck.state.v2';
+  let state = { active: null, orders: {}, recent: [], queue: [], picker: '' };   // orders[orderNo] = order with progress baked in; queue = unsent events
+  let order = null;
+  let sheetLineIdx = -1, sheetLotIdx = -1, qtyBuffer = '';
+  let audioCtx = null;
+
+  /* ---------- helpers ---------- */
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const linePicked = l => l.allocs.length ? l.allocs.reduce((s, a) => s + a.picked, 0) : (l.manual || 0);
+  const lineTarget = l => l.allocs.length ? l.allocs.reduce((s, a) => s + a.qty, 0) : l.qty;
+  const lineDone = l => linePicked(l) >= lineTarget(l) && lineTarget(l) > 0;
+  const tail = bc => bc.length > 8 ? '…' + bc.slice(-6) : bc;
+
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    $(id).classList.add('active');
+    $('appbar').style.display = id === 'scr-login' ? 'none' : 'flex';
+  }
+  function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+  function load() { try { const s = JSON.parse(localStorage.getItem(LS_KEY)); if (s && s.orders) state = Object.assign({ queue: [], picker: '' }, s); } catch (e) {} }
+
+  // iOS only lets a page make sound after a tap: create and resume the audio context on the first touch.
+  function unlockAudio() {
+    try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+  }
+  document.addEventListener('touchend', unlockAudio, { passive: true });
+  document.addEventListener('click', unlockAudio);
+
+  function result(good, title, sub) {
+    const r = $('scanResult');
+    r.className = 'result ' + (good ? 'ok' : 'err');
+    r.innerHTML = esc(title) + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '');
+    $('lastScan').textContent = (good ? '✓ ' : '✕ ') + title + (sub ? ' — ' + sub : '');
+  }
+
+  function beep(good) {
+    try {
+      unlockAudio();
+      const t = audioCtx.currentTime;
+      const mk = (freq, start, dur, vol) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = freq; o.type = 'square';
+        g.gain.setValueAtTime(vol, t + start); g.gain.exponentialRampToValueAtTime(0.001, t + start + dur);
+        o.connect(g); g.connect(audioCtx.destination); o.start(t + start); o.stop(t + start + dur);
+      };
+      if (good) mk(1400, 0, .09, .25); else { mk(220, 0, .18, .4); mk(220, .22, .18, .4); }
+    } catch (e) {}
+    try { navigator.vibrate(good ? 60 : [120, 60, 120]); } catch (e) {}
+    const f = $('flash'); f.className = 'flash ' + (good ? 'go' : 'err'); void f.offsetWidth; f.classList.add('show');
+  }
+
+  // Rising three-note chime + long buzz: unmistakably different from a single scan beep.
+  function chimeDone() {
+    try {
+      unlockAudio();
+      const t = audioCtx.currentTime;
+      [[880, 0], [1175, .14], [1568, .28]].forEach(([freq, start]) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = freq; o.type = 'triangle';
+        g.gain.setValueAtTime(.35, t + start); g.gain.exponentialRampToValueAtTime(0.001, t + start + .32);
+        o.connect(g); g.connect(audioCtx.destination); o.start(t + start); o.stop(t + start + .34);
+      });
+    } catch (e) {}
+    try { navigator.vibrate([80, 60, 80, 60, 300]); } catch (e) {}
+  }
+
+  const orderComplete = () => order && order.lines.length > 0 && order.lines.every(l => lineDone(l));
+  function checkOrderDone() {
+    if (!orderComplete() || order.doneNotified) return;
+    order.doneNotified = true; save();
+    chimeDone();
+    const d = $('doneBanner'); d.classList.add('show');
+    $('doneText').textContent = 'All ' + order.lines.reduce((s, l) => s + lineTarget(l), 0) + ' units across ' + order.lines.length + ' lines are picked.';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    logEvent('order_complete', { before: order.lines.reduce((s, l) => s + lineTarget(l), 0), after: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: 'every line reached its quantity' });
+  }
+
+  /* ---------- bridge + sign-in ---------- */
+  async function bridge(path, opts) {
+    const r = await fetch(path, Object.assign({ credentials: 'same-origin' }, opts || {}));
+    const j = await r.json().catch(() => ({ error: 'The server returned an unreadable response (' + r.status + ').' }));
+    if (r.status === 401 && j.signInRequired) { show('scr-login'); setTimeout(() => $('loginPw').focus(), 50); throw new Error('Sign in required.'); }
+    if (!r.ok) throw new Error(j.error || ('Server error ' + r.status));
+    return j;
+  }
+
+  async function signIn() {
+    const err = $('loginErr'); err.style.display = 'none';
+    $('loginBtn').disabled = true;
+    try {
+      const r = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('loginPw').value }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Sign-in failed.');
+      $('loginPw').value = '';
+      await boot();
+    } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+    finally { $('loginBtn').disabled = false; }
+  }
+
+  async function signOut() {
+    try { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+    order = null; state.active = null; save();
+    show('scr-login'); setTimeout(() => $('loginPw').focus(), 50);
+  }
+
+  /* ---------- pick event log (sent to the bridge, queued if offline) ---------- */
+  let flushing = false;
+  function logEvent(event, data = {}) {
+    state.queue.push(Object.assign({ ts: Date.now(), picker: state.picker, event,
+      orderNo: order ? order.orderNo : '', customer: order ? order.customer : '' }, data));
+    if (state.queue.length > 5000) state.queue.splice(0, state.queue.length - 5000);
+    save(); flush();
+  }
+  async function flush() {
+    if (flushing || !state.queue.length) return;
+    flushing = true;
+    const batch = state.queue.slice(0, 200);
+    try {
+      const r = await fetch('/api/events', { method: 'POST', keepalive: true, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ events: batch }) });
+      if (r.ok) { state.queue.splice(0, batch.length); save(); }
+    } catch (e) { /* offline: keep the queue, retry later */ }
+    finally { flushing = false; if (state.queue.length >= 200) flush(); }
+  }
+  setInterval(flush, 5000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flush(); });
+
+  function setPicker() {
+    const n = prompt('Picker name:', state.picker || '');
+    if (n === null) return;
+    state.picker = n.trim(); save(); renderPickerName();
+  }
+  function renderPickerName() { $('barPicker').textContent = state.picker || 'No picker name'; }
+
+  async function health() {
+    try {
+      const h = await bridge('/api/health');
+      if (!state.picker && h.pickerName) { state.picker = h.pickerName; save(); }
+      renderPickerName();
+      const loc = h.locations ? (h.locations.lastError ? ' · locations: ' + h.locations.lastError : ' · locations: ' + h.locations.rows + ' rows') : '';
+      $('healthDot').className = 'dot ' + (h.loggedIn ? 'ok' : 'bad');
+      $('healthText').textContent = (h.loggedIn ? 'Connected to Cultivera (' + h.user + ')' : 'Not connected to Cultivera' + (h.lastError ? ': ' + h.lastError.message : '')) + loc;
+    } catch (e) {
+      $('healthDot').className = 'dot bad';
+      $('healthText').textContent = e.message === 'Sign in required.' ? 'Sign in required' : 'Server not reachable — is the bridge running?';
+    }
+  }
+
+  /* ---------- order loading ---------- */
+  function normalizeOrder(raw, previous) {
+    const prevLines = previous ? previous.lines : [];
+    return {
+      id: raw.id, orderNo: raw.orderNo, customer: raw.customer, status: raw.status, cancelled: raw.cancelled,
+      fetchedAt: raw.fetchedAt, finished: previous ? previous.finished : false,
+      lines: raw.lines.map(l => {
+        const prev = prevLines.find(p => p.itemId === l.itemId);
+        return {
+          itemId: l.itemId, name: l.name, size: l.size, strain: l.strain, qty: l.qty, allocated: l.allocated, sample: l.sample, location: l.location || '', locationSource: l.locationSource || '',
+          mode: prev ? prev.mode : 'scan', short: prev ? prev.short : false, manual: prev ? prev.manual : null,
+          allocs: l.allocs.map(a => {
+            const pa = prev && prev.allocs.find(x => x.barcodes[0] === a.barcodes[0]);
+            return { barcodes: a.barcodes, qty: a.qty, location: a.location, picked: pa ? Math.min(pa.picked, a.qty) : 0 };
+          })
+        };
+      })
+    };
+  }
+
+  async function loadOrder(input) {
+    const no = String(input || '').replace(/\D/g, '');
+    const err = $('homeErr'); err.style.display = 'none';
+    if (!no) { err.textContent = 'Enter the order number first.'; err.style.display = 'block'; return; }
+    if (state.orders[no] && !state.orders[no].finished) { order = state.orders[no]; state.active = no; save(); enterPick(); return; }
+    $('loadBtn').disabled = true; $('loadBtn').textContent = '…';
+    try {
+      const raw = await bridge('/api/order/' + no);
+      order = normalizeOrder(raw, state.orders[no]);
+      state.orders[no] = order; state.active = no;
+      state.recent = [no, ...state.recent.filter(x => x !== no)].slice(0, 8);
+      save(); beep(true);
+      logEvent('order_loaded', { before: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: order.status });
+      enterPick();
+    } catch (e) {
+      if (e.message !== 'Sign in required.') { err.textContent = e.message; err.style.display = 'block'; beep(false); }
+    } finally { $('loadBtn').disabled = false; $('loadBtn').textContent = 'Load'; }
+  }
+
+  async function refreshOrder() {
+    try {
+      const raw = await bridge('/api/order/' + order.orderNo);
+      order = normalizeOrder(raw, order);
+      state.orders[order.orderNo] = order; save(); renderPick();
+      logEvent('order_refreshed', { before: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: order.status });
+      $('lastScan').textContent = '↻ Refreshed from Cultivera (' + order.status + ')';
+    } catch (e) { $('lastScan').textContent = '✕ ' + e.message; beep(false); }
+  }
+
+  /* ---------- picking ---------- */
+  function enterPick() {
+    show('scr-pick'); renderPick();
+    $('doneBanner').classList.toggle('show', !!(order && order.doneNotified && orderComplete() && !order.finished));
+    if (order && order.doneNotified) $('doneText').textContent = 'All ' + order.lines.reduce((s, l) => s + lineTarget(l), 0) + ' units across ' + order.lines.length + ' lines are picked.';
+    $('scanResult').className = 'result'; $('lastScan').textContent = 'Ready — scan any item';
+    $('keyForm').classList.remove('open');
+    setTimeout(focusWedge, 100);
+    setTimeout(measureHeader, 50); setTimeout(measureHeader, 600);   // again once the web fonts have loaded
+  }
+
+  function statusClass(s) {
+    if (/sublotted|ready/i.test(s) && !/partial/i.test(s)) return 'ok';
+    if (/submitted|partial/i.test(s)) return 'warn';
+    if (/invoiced|manifested|quarantin|cancel/i.test(s)) return 'err';
+    return '';
+  }
+
+  // Height of the sticky order header, so the pinned banner and line scrolling sit just below it (it wraps on narrow screens).
+  function measureHeader() {
+    const h = document.querySelector('#scr-pick .pickhead');
+    if (h && h.offsetHeight) document.documentElement.style.setProperty('--headh', h.offsetHeight + 'px');
+  }
+  window.addEventListener('resize', measureHeader);
+
+  // After a scan: ring the line that was counted. If it is still open, keep it in view; if it just completed it has
+  // dropped below the unpicked lines, so keep the top of the list (the next item to pick) in view instead.
+  function revealLine(i) {
+    const el = lineEl(i); if (!el) return;
+    document.querySelectorAll('.lineitem.justscanned').forEach(x => x.classList.remove('justscanned'));
+    el.classList.add('justscanned');
+    const top = 52 + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--headh')) || 118) + $('pinned').offsetHeight + 10;
+    const target = (lineDone(order.lines[i]) || order.lines[i].short) ? $('lineList').firstElementChild : el;
+    const r = target.getBoundingClientRect();
+    if (r.top < top || r.bottom > window.innerHeight - 90) window.scrollTo(0, window.scrollY + r.top - top);   // instant: no animation lag on the gun
+  }
+
+  function renderPick() {
+    $('pickOrder').textContent = order.orderNo;
+    $('pickCust').textContent = order.customer;
+    setTimeout(measureHeader, 0);
+    const st = $('pickStatus'); st.textContent = order.cancelled ? 'CANCELLED' : order.status; st.className = 'pill ' + (order.cancelled ? 'err' : statusClass(order.status));
+    const totalUnits = order.lines.reduce((s, l) => s + lineTarget(l), 0);
+    const picked = order.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0);
+    const doneLines = order.lines.filter(l => lineDone(l) || l.short).length;
+    $('progFill').style.width = (totalUnits ? (picked / totalUnits) * 100 : 0) + '%';
+    $('progUnits').textContent = picked + ' / ' + totalUnits + ' units';
+    $('progLines').textContent = doneLines + ' / ' + order.lines.length + ' lines';
+
+    const unalloc = order.lines.filter(l => !l.allocs.length).length;
+    const warn = $('pickWarn');
+    if (order.cancelled) { warn.textContent = 'This order is CANCELLED in Cultivera.'; warn.style.display = 'block'; }
+    else if (unalloc) { warn.textContent = unalloc + ' line' + (unalloc > 1 ? 's have' : ' has') + ' no inventory allocated in Cultivera yet — those can only be counted, not scanned. Allocate them and tap Refresh.'; warn.style.display = 'block'; }
+    else warn.style.display = 'none';
+
+    // Show the last 4 digits of each lot, or more if two lots on this order would otherwise look the same.
+    const allLots = order.lines.flatMap(l => l.allocs.map(a => a.barcodes[0]));
+    let tailLen = 4;
+    while (tailLen < 17 && new Set(allLots.map(b => b.slice(-tailLen))).size < new Set(allLots).size) tailLen++;
+
+    // Unpicked lines first, in pick-list order; completed (or marked-short) lines drop below them, also in pick-list order.
+    const orderIdx = order.lines.map((l, i) => i).sort((a, b) => {
+      const da = lineDone(order.lines[a]) || order.lines[a].short ? 1 : 0, db = lineDone(order.lines[b]) || order.lines[b].short ? 1 : 0;
+      return da - db || a - b;
+    });
+    const firstDone = orderIdx.findIndex(i => lineDone(order.lines[i]) || order.lines[i].short);
+
+    const list = $('lineList'); list.innerHTML = '';
+    orderIdx.forEach((i, pos) => {
+      const l = order.lines[i];
+      if (pos === firstDone && pos > 0) { const sep = document.createElement('div'); sep.className = 'donesep'; sep.textContent = 'Picked'; list.appendChild(sep); }
+      const p = linePicked(l), t = lineTarget(l);
+      const d = document.createElement('div'); d.dataset.line = i;
+      let cls = 'lineitem';
+      if (!l.allocs.length && !l.manual) cls += ' noalloc';
+      else if (p > t) cls += ' over';
+      else if (lineDone(l)) cls += ' done';
+      else if (l.short) cls += ' short';
+      else if (p > 0) cls += ' partial';
+      d.className = cls;
+      const locs = [l.location, ...l.allocs.map(a => a.location)].filter((v, i, arr) => v && arr.indexOf(v) === i);
+      const locHtml = !locs.length ? '' : (l.locationSource === 'productLine'
+        ? ' · <span class="sec">section: ' + esc(locs.join(' / ')) + '</span>'
+        : ' · <span class="loc">📍 ' + esc(locs.join(' / ')) + '</span>');
+      const meta = esc([l.strain, l.size].filter(Boolean).join(' · ')) + locHtml;
+      const flags = (l.short ? ' · MARKED SHORT' : '') + (l.mode === 'count' ? ' · COUNT MODE' : '');
+      const lots = l.allocs.length
+        ? '<div class="lots">' + l.allocs.map(a => '<span class="lot4' + (a.picked >= a.qty ? ' full' : '') + '"><small>…</small>' + esc(a.barcodes[0].slice(-tailLen)) + (l.allocs.length > 1 ? '<span class="lq">' + a.picked + '/' + a.qty + '</span>' : '') + '</span>').join('') + '</div>'
+        : '<div class="sub" style="color:var(--err);font-weight:700">NOT ALLOCATED IN CULTIVERA</div>';
+      d.innerHTML = '<div style="min-width:0"><div class="name">' + esc(l.name) + (l.sample ? ' <span class="pill warn">SAMPLE</span>' : '') + '</div>' +
+        (meta || flags ? '<div class="sub">' + meta + esc(flags) + '</div>' : '') + lots + '</div>' +
+        '<div class="count">' + p + '<span class="of"> / ' + t + '</span></div>';
+      d.onclick = () => openSheet(i);
+      list.appendChild(d);
+    });
+  }
+  const lineEl = i => $('lineList').querySelector('.lineitem[data-line="' + i + '"]');
+
+  const digits = s => String(s).replace(/\D/g, '');
+  function matchAlloc(scan) {
+    const s = String(scan).trim(), sd = digits(s);
+    const hits = [];
+    order.lines.forEach((l, li) => l.allocs.forEach((a, ai) => {
+      if (a.barcodes.some(b => b === s || (sd.length >= 6 && digits(b) === sd))) hits.push({ li, ai, l, a });
+    }));
+    if (!hits.length && sd.length >= 4 && sd.length < 12) {
+      // Partial entry (e.g. the last 5 digits typed by hand): accept only if it identifies exactly one lot on this order.
+      const tails = [];
+      order.lines.forEach((l, li) => l.allocs.forEach((a, ai) => { if (a.barcodes.some(b => digits(b).endsWith(sd))) tails.push({ li, ai, l, a }); }));
+      const lots = new Set(tails.map(h => h.a.barcodes[0]));
+      if (lots.size > 1) return { ambiguous: lots.size };
+      hits.push(...tails);
+    }
+    return hits.find(h => h.a.picked < h.a.qty) || hits[0] || null;
+  }
+
+  function handleScan(text) {
+    if ($('scr-home').classList.contains('active')) {
+      const d = digits(text);
+      if (d.length >= 4 && d.length <= 7) { $('orderNo').value = d; loadOrder(d); }
+      else if (d.length >= 8) findOrderByLot(text);
+      else { $('homeErr').textContent = 'That barcode is not an order number or a lot: ' + text; $('homeErr').style.display = 'block'; beep(false); }
+      return;
+    }
+    if (!$('scr-pick').classList.contains('active') || !order) return;
+    const hit = matchAlloc(text);
+    if (hit && hit.ambiguous) { result(false, 'Type more digits', text + ' matches ' + hit.ambiguous + ' lots on this order'); beep(false); logEvent('scan_rejected', { lot: text, detail: 'ambiguous partial entry' }); return; }
+    if (!hit) { result(false, 'Wrong item', text + ' is not on this order'); beep(false); logEvent('scan_rejected', { lot: text, detail: 'not on order' }); return; }
+    if (hit.a.picked >= hit.a.qty) { result(false, 'Already complete', hit.l.name + ' — all ' + hit.a.qty + ' picked for this lot'); beep(false); revealLine(hit.li); logEvent('scan_rejected', { product: hit.l.name, lot: text, before: hit.a.picked, after: hit.a.picked, target: hit.a.qty, detail: 'lot already complete' }); return; }
+    if (hit.l.mode === 'count') { result(true, 'Item OK', hit.l.name + ' — enter the count'); beep(true); openSheet(hit.li, hit.ai); return; }
+    hit.a.picked++; hit.l.short = false;
+    logEvent('scan_ok', { product: hit.l.name, lot: hit.a.barcodes[0], before: hit.a.picked - 1, after: hit.a.picked, target: hit.a.qty });
+    save(); renderPick();
+    result(true, linePicked(hit.l) + ' / ' + lineTarget(hit.l) + (lineDone(hit.l) ? ' — line complete' : ''), hit.l.name);
+    if (orderComplete() && !order.doneNotified) checkOrderDone(); else { beep(true); setTimeout(() => revealLine(hit.li), 0); }
+    if (lineDone(hit.l) && !orderComplete()) { const next = order.lines.findIndex(l => !lineDone(l) && !l.short); if (next >= 0) $('lastScan').textContent = '✓ ' + hit.l.name + ' done — next: ' + order.lines[next].name; }
+  }
+
+  /* ---------- line sheet ---------- */
+  function openSheet(i, lotForCount) {
+    sheetLineIdx = i; sheetLotIdx = -1; qtyBuffer = '';
+    const l = order.lines[i];
+    $('sheetName').textContent = l.name;
+    $('sheetMeta').textContent = [l.strain, l.size, l.location ? (l.locationSource === 'productLine' ? 'section: ' + l.location : '📍 ' + l.location) : '', 'ordered ' + l.qty, l.allocs.length ? 'allocated ' + lineTarget(l) : 'not allocated'].filter(Boolean).join(' · ');
+    $('qtyDisplay').style.display = 'none'; $('qtyPad').style.display = 'none';
+    const lots = $('sheetLots'); lots.innerHTML = '';
+    l.allocs.forEach((a, ai) => {
+      const d = document.createElement('div'); d.className = 'lot';
+      const bc = a.barcodes[0];
+      d.innerHTML = '<div><div class="bc">' + esc(bc.slice(0, -6)) + '<b>' + esc(bc.slice(-6)) + '</b></div>' + (a.location ? '<div class="loc">' + esc(a.location) + '</div>' : '') + '</div>' +
+        '<div class="row" style="flex-wrap:nowrap"><span class="n' + (a.picked >= a.qty ? ' ok' : '') + '">' + a.picked + '/' + a.qty + '</span><button data-ai="' + ai + '">count</button></div>';
+      d.querySelector('button').onclick = () => showQtyPad(ai);
+      lots.appendChild(d);
+    });
+    const actions = $('sheetActions'); actions.innerHTML = '';
+    const btn = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; actions.appendChild(b); };
+    if (typeof lotForCount === 'number') { showQtyPad(lotForCount); }
+    else {
+      if (!l.allocs.length) btn('Enter counted quantity', 'primary', () => showQtyPad(-1));
+      else btn(l.mode === 'count' ? 'Switch to scan every unit' : 'Count mode for this line', 'primary', () => { l.mode = l.mode === 'count' ? 'scan' : 'count'; save(); renderPick(); closeSheet(); });
+      btn(l.short ? 'Un-mark short' : 'Mark line short', '', () => { l.short = !l.short; logEvent(l.short ? 'line_short' : 'line_unshort', { product: l.name, before: linePicked(l), after: linePicked(l), target: lineTarget(l) }); save(); renderPick(); closeSheet(); });
+      btn('Reset line to 0', 'danger', () => { if (confirm('Reset this line to 0 picked?')) { logEvent('line_reset', { product: l.name, before: linePicked(l), after: 0, target: lineTarget(l) }); l.allocs.forEach(a => a.picked = 0); l.manual = null; l.short = false; order.doneNotified = false; $('doneBanner').classList.remove('show'); save(); renderPick(); closeSheet(); } });
+      btn('Close', '', closeSheet);
+    }
+    $('sheetWrap').classList.add('open');
+  }
+
+  function showQtyPad(ai) {
+    sheetLotIdx = ai; qtyBuffer = '';
+    const l = order.lines[sheetLineIdx];
+    const target = ai >= 0 ? l.allocs[ai].qty : l.qty;
+    $('sheetActions').innerHTML = '';
+    $('sheetMeta').textContent = (ai >= 0 ? 'Lot ' + tail(l.allocs[ai].barcodes[0]) : 'Line') + ' — enter how many were picked (expected ' + target + ')';
+    const pad = $('qtyPad'); pad.style.display = 'grid'; pad.innerHTML = '';
+    $('qtyDisplay').style.display = 'block'; $('qtyDisplay').textContent = '0';
+    '1234567890'.split('').forEach(n => {
+      const b = document.createElement('button'); b.textContent = n;
+      b.onclick = () => { if (qtyBuffer.length < 4) { qtyBuffer += n; $('qtyDisplay').textContent = qtyBuffer; } };
+      pad.appendChild(b);
+    });
+    const back = document.createElement('button'); back.textContent = '⌫';
+    back.onclick = () => { qtyBuffer = qtyBuffer.slice(0, -1); $('qtyDisplay').textContent = qtyBuffer || '0'; };
+    pad.appendChild(back);
+    const ok = document.createElement('button'); ok.textContent = 'SET'; ok.style.background = 'var(--gold)'; ok.style.color = '#fff'; ok.style.borderColor = 'var(--gold)';
+    ok.onclick = () => {
+      const n = parseInt(qtyBuffer, 10); if (isNaN(n)) return;
+      const before = ai >= 0 ? l.allocs[ai].picked : (l.manual || 0);
+      logEvent('count_set', { product: l.name, lot: ai >= 0 ? l.allocs[ai].barcodes[0] : '', before, after: n, target });
+      if (ai >= 0) { l.allocs[ai].picked = n; l.mode = 'count'; } else { l.manual = n; }
+      if (n > target) { beep(false); alert('That is MORE than expected (' + target + '). Double-check the count.'); } else if (!orderComplete()) beep(true);
+      if (linePicked(l) >= lineTarget(l)) l.short = false;
+      const li = sheetLineIdx;
+      save(); renderPick(); closeSheet();
+      checkOrderDone();
+      setTimeout(() => revealLine(li), 0);
+    };
+    pad.appendChild(ok);
+  }
+
+  function closeSheet() { $('sheetWrap').classList.remove('open'); sheetLineIdx = -1; sheetLotIdx = -1; setTimeout(focusWedge, 50); }
+  function openKeyEntry() {
+    const f = $('keyForm'); f.classList.toggle('open');
+    if (f.classList.contains('open')) $('keyIn').focus(); else { $('keyIn').blur(); setTimeout(focusWedge, 50); }
+  }
+  function submitKeyEntry() {
+    const v = $('keyIn').value.trim(); $('keyIn').value = '';
+    if (v) handleScan(v);
+    $('keyIn').focus();
+  }
+
+  /* ---------- summary ---------- */
+  function lineStatus(l) {
+    const p = linePicked(l), t = lineTarget(l);
+    if (!l.allocs.length && l.manual == null) return { cls: 'err', text: 'NOT ALLOCATED' };
+    if (p === t) return { cls: 'ok', text: 'OK' };
+    if (p < t) return { cls: l.short ? 'warn' : 'err', text: (l.short ? 'SHORT ' : 'MISSING ') + (t - p) };
+    return { cls: 'err', text: 'OVER +' + (p - t) };
+  }
+
+  function finishPick() {
+    const probs = order.lines.filter(l => lineStatus(l).cls !== 'ok');
+    const v = $('sumVerdict');
+    logEvent(probs.length ? 'order_issues' : 'order_verified', { before: order.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0), after: order.lines.length - probs.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: probs.length ? probs.map(l => lineStatus(l).text + ': ' + l.name).join('; ') : 'all lots match' });
+    if (!probs.length) {
+      v.innerHTML = '<h2 style="color:var(--go)">✓ Order verified</h2><p class="muted" style="margin:6px 0 0">Every lot matches Cultivera — ' + order.lines.length + ' lines, ' + order.lines.reduce((s, l) => s + lineTarget(l), 0) + ' units. Clear to manifest.</p>';
+      order.finished = true;
+    } else {
+      v.innerHTML = '<h2 style="color:var(--warn)">⚠ ' + probs.length + ' line' + (probs.length > 1 ? 's' : '') + ' off</h2><p class="muted" style="margin:6px 0 0">Review below before manifesting.</p>';
+    }
+    save();
+    const s = $('sumLines'); s.innerHTML = '';
+    order.lines.forEach(l => {
+      const st = lineStatus(l);
+      const d = document.createElement('div'); d.className = 'summaryline';
+      d.innerHTML = '<div><div>' + esc(l.name) + '</div><div class="mono tiny" style="color:var(--muted)">' + esc(l.allocs.map(a => tail(a.barcodes[0])).join(' ') || 'no lots') + '</div></div>' +
+        '<div class="row" style="flex-wrap:nowrap"><span class="mono">' + linePicked(l) + '/' + lineTarget(l) + '</span><span class="pill ' + st.cls + '">' + st.text + '</span></div>';
+      s.appendChild(d);
+    });
+    show('scr-summary');
+  }
+
+  function copyReport() {
+    const rows = order.lines.map(l => linePicked(l) + '/' + lineTarget(l) + '\t' + lineStatus(l).text + '\t' + l.name + '\t' + l.allocs.map(a => a.barcodes[0] + ':' + a.picked + '/' + a.qty).join(' '));
+    const ok = order.lines.every(l => lineStatus(l).cls === 'ok');
+    const txt = 'PICK CHECK — ORD-' + order.orderNo + (order.customer ? ' — ' + order.customer : '') + '\n' + new Date().toLocaleString() +
+      '\nCultivera status: ' + order.status + '\nResult: ' + (ok ? 'VERIFIED — all lots match' : 'DISCREPANCIES — see lines') + '\n\nPicked/Qty\tStatus\tProduct\tLots\n' + rows.join('\n');
+    navigator.clipboard.writeText(txt).then(() => alert('Report copied.'), () => prompt('Copy:', txt));
+  }
+
+  function backToPick() { order.finished = false; save(); show('scr-pick'); renderPick(); }
+  function goHome() { order = null; state.active = null; save(); renderHome(); show('scr-home'); document.activeElement && document.activeElement.blur(); }
+  function clearOrder() {
+    if (!confirm('Clear ORD-' + order.orderNo + ' from this device?')) return;
+    logEvent('order_cleared', {});
+    delete state.orders[order.orderNo]; state.recent = state.recent.filter(x => x !== String(order.orderNo)); goHome();
+  }
+
+  /* ---------- home: scan a package or lot tag to find its order ---------- */
+  const fmtDate = s => { if (!s) return ''; const d = new Date(s); return (d.getMonth() + 1) + '/' + d.getDate(); };
+
+  async function findOrderByLot(code) {
+    const err = $('homeErr'); err.style.display = 'none'; $('chooserWrap').style.display = 'none';
+    try {
+      const r = await bridge('/api/find-by-lot/' + encodeURIComponent(code));
+      const m = r.matches || [];
+      if (!m.length) { err.textContent = 'Lot …' + digits(code).slice(-6) + ' is not on any order waiting to be picked.'; err.style.display = 'block'; beep(false); return; }
+      if (m.length === 1) { beep(true); loadOrder(m[0].orderNo); return; }
+      const list = $('chooserList'); list.innerHTML = '';
+      for (const o of m) {
+        const d = document.createElement('div'); d.className = 'recentitem';
+        d.innerHTML = '<div><div class="no">ORD-' + esc(o.orderNo) + '</div><div class="cust">' + esc(o.customer) + ' · ' + esc(o.product) + ' × ' + o.units + '</div></div><span class="date">deliv ' + fmtDate(o.deliveryDate) + '</span>';
+        d.onclick = () => loadOrder(o.orderNo);
+        list.appendChild(d);
+      }
+      $('chooserWrap').style.display = 'block'; beep(true);
+    } catch (e) { if (e.message !== 'Sign in required.') { err.textContent = e.message; err.style.display = 'block'; beep(false); } }
+  }
+
+  function renderHome() {
+    $('chooserWrap').style.display = 'none'; $('homeErr').style.display = 'none';
+    const wrap = $('recentWrap'), list = $('recentList'); list.innerHTML = '';
+    const recent = state.recent.filter(no => state.orders[no]);
+    wrap.style.display = recent.length ? 'block' : 'none';
+    recent.forEach(no => {
+      const o = state.orders[no];
+      const p = o.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0), t = o.lines.reduce((s, l) => s + lineTarget(l), 0);
+      const d = document.createElement('div'); d.className = 'recentitem';
+      d.innerHTML = '<div><div class="no">ORD-' + esc(no) + '</div><div class="cust">' + esc(o.customer) + '</div></div>' +
+        '<div class="row" style="flex-wrap:nowrap"><span class="mono tiny muted">' + p + '/' + t + '</span><span class="pill ' + (o.finished ? 'ok' : (p ? 'warn' : '')) + '">' + (o.finished ? 'VERIFIED' : (p ? 'IN PROGRESS' : 'LOADED')) + '</span></div>';
+      d.onclick = () => { order = o; state.active = no; save(); enterPick(); };
+      list.appendChild(d);
+    });
+    $('orderNo').value = '';
+    renderPickerName();
+    health();
+  }
+
+  /* ---------- scanner (DataWedge keystroke) capture ----------
+     A scan arrives as a fast burst of keystrokes. It is committed when Enter/Tab follows OR when the burst goes quiet
+     for a moment, so it works whether or not DataWedge is set to "Send ENTER key". Two paths catch the keystrokes:
+     a hidden input that stays focused on the pick screen (Android injects text into the focused field), and a
+     document-level key listener for when nothing is focused. */
+  const wedge = document.createElement('input');
+  wedge.id = 'wedgeIn'; wedge.setAttribute('inputmode', 'none'); wedge.setAttribute('autocomplete', 'off'); wedge.setAttribute('aria-hidden', 'true'); wedge.tabIndex = -1;
+  wedge.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0;pointer-events:none';
+  document.body.appendChild(wedge);
+
+  let buf = '', lastKeyAt = 0, idleTimer = 0;
+  function commitScan() { clearTimeout(idleTimer); idleTimer = 0; const s = buf.trim(); buf = ''; if (s.length >= 3) handleScan(s); }
+  function feedChar(ch) {
+    const now = Date.now();
+    if (now - lastKeyAt > 1500) buf = '';
+    buf += ch; lastKeyAt = now;
+    clearTimeout(idleTimer); idleTimer = setTimeout(commitScan, 180);
+  }
+  document.addEventListener('keydown', e => {
+    const el = document.activeElement, tag = el && el.tagName, isWedge = el === wedge;
+    if ((tag === 'INPUT' || tag === 'TEXTAREA') && !isWedge) return;   // real form fields handle their own typing
+    if (e.key === 'Enter' || e.key === 'Tab') { if (buf.length) { e.preventDefault(); commitScan(); } return; }
+    if (isWedge) return;                                               // the hidden field reports its text through the input event below
+    if (e.key && e.key.length === 1) { feedChar(e.key); e.preventDefault(); }
+    else if (e.key === 'Backspace') buf = buf.slice(0, -1);
+  });
+  wedge.addEventListener('input', () => {
+    const v = wedge.value; wedge.value = '';
+    for (const ch of v) { if (ch === '\n' || ch === '\r' || ch === '\t') commitScan(); else feedChar(ch); }
+  });
+  function focusWedge() {
+    if (!$('scr-pick').classList.contains('active')) return;
+    const el = document.activeElement, tag = el && el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;                  // e.g. the Key-in box is open
+    try { wedge.focus({ preventScroll: true }); } catch (e) {}
+  }
+  document.addEventListener('click', () => setTimeout(focusWedge, 50));
+  document.addEventListener('touchend', () => setTimeout(focusWedge, 50), { passive: true });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') focusWedge(); });
+
+  // The Key-in box: a scan typed into it (long burst) submits itself, so the picker never has to tap Go after a trigger pull.
+  let keyInTimer = 0, keyInAt = 0, keyInLen = 0;
+  $('keyIn').addEventListener('input', () => {
+    const now = Date.now(), v = $('keyIn').value;
+    const burst = now - keyInAt < 120 && v.length > keyInLen;
+    keyInAt = now; keyInLen = v.length;
+    clearTimeout(keyInTimer);
+    if (burst && v.replace(/\D/g, '').length >= 12) keyInTimer = setTimeout(submitKeyEntry, 180);
+  });
+
+  /* ---------- camera scanning (iPhone or any phone; the Zebra uses its own scanner) ---------- */
+  // Built for small QR labels: high-resolution frames, optical zoom where the phone allows it, and decoding on an
+  // enlarged crop of the target box (a small code that is only a few pixels in the full frame becomes readable).
+  const Cam = (() => {
+    let stream = null, video = null, running = false, timer = 0, track = null, torchOn = false;
+    let det = null, zx = null, tick = 0, busy = false, lastCode = '', lastAt = 0, mode = 'pick';
+    let lastSeenAt = 0, armed = true;                 // identical labels: count again only after the code has left the frame briefly
+    const REARM_MS = 700, MIN_GAP_MS = 400;
+    const work = document.createElement('canvas');
+    const supported = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && (window.isSecureContext || location.hostname === 'localhost');
+    function status(msg, cls) { const s = $('camStatus'); s.textContent = msg; s.className = 'camstatus ' + (cls || ''); }
+
+    function onCode(text) {
+      text = String(text || '').trim(); if (!text) return;
+      const now = Date.now();
+      lastSeenAt = now;
+      // Same label as last time: only count it again once it has been out of view (re-armed) and not within a few hundred ms.
+      if (text === lastCode && (!armed || now - lastAt < MIN_GAP_MS)) return;
+      lastCode = text; lastAt = now; armed = false;
+      if (mode === 'photo') { const d = text.replace(/\D/g, ''); if (d.length >= 4 && d.length <= 7) { found(d, 'QR code read'); } return; }
+      handleScan(text);
+      const msg = $('lastScan').textContent;
+      status(msg, msg.startsWith('✓') ? 'ok' : 'err');
+      if (mode === 'order') setTimeout(close, 400);
+    }
+
+    /* ---- photo mode: read the printed order number off a Cultivera pick list ---- */
+    let foundNo = '', ocrWorker = null, ocrBusy = false;
+    function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('could not load ' + src)); document.head.appendChild(s); }); }
+    async function getOcr() {
+      if (ocrWorker) return ocrWorker;
+      if (!window.Tesseract) await loadScript('/static/tesseract.min.js');
+      status('Loading the text reader (first time only)…');
+      ocrWorker = await Tesseract.createWorker('eng', 1, { workerPath: '/static/tesseract-worker.min.js', corePath: '/static/', langPath: '/static', gzip: true });
+      await ocrWorker.setParameters({ tessedit_pageseg_mode: '6' });
+      return ocrWorker;
+    }
+    // Prefer the number printed after "#"; otherwise the first standalone 5-digit number that looks like an order number.
+    function extractOrderNo(text) {
+      const t = text.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1');
+      let m = t.match(/#\s*(\d{5})\b/); if (m) return m[1];
+      m = t.match(/PICK\s*L[I1]ST[^\d]{0,12}(\d{5})\b/i); if (m) return m[1];
+      const nums = [...t.matchAll(/(?<!\d)(\d{5})(?!\d)/g)].map(x => x[1]).filter(n => n >= 10000 && n <= 39999);
+      return nums[0] || '';
+    }
+    // The header crop, sized for the text reader: ~1300px wide is plenty for printed text and keeps OCR quick on the Zebra.
+    function ocrFrame() {
+      const r = targetRect();
+      const src = r && r.w > 20 ? r : { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight };
+      const scale = Math.min(1.6, 1300 / src.w);
+      const cv = document.createElement('canvas'); cv.width = Math.round(src.w * scale); cv.height = Math.round(src.h * scale);
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, src.x, src.y, src.w, src.h, 0, 0, cv.width, cv.height);
+      // light contrast stretch: printed black on white reads better after a snapshot
+      const img = ctx.getImageData(0, 0, cv.width, cv.height), d = img.data;
+      for (let i = 0; i < d.length; i += 4) { const g = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11); const v = g < 90 ? 0 : g > 190 ? 255 : Math.round((g - 90) * 2.55); d[i] = d[i + 1] = d[i + 2] = v; }
+      ctx.putImageData(img, 0, 0);
+      return cv;
+    }
+    async function capture() {
+      if (!running || ocrBusy) return;
+      ocrBusy = true; $('camCapture').disabled = true; $('camCapture').textContent = 'Reading…';
+      try {
+        const cv = ocrFrame();
+        status('Reading the order number…');
+        const w = await getOcr();
+        const { data } = await w.recognize(cv);
+        const no = extractOrderNo(data.text || '');
+        if (no) found(no, 'Read from the printed pick list');
+        else status('No order number found. Fit "PICK LIST # …" inside the box and try again.', 'err');
+      } catch (e) { status('Could not read the photo: ' + e.message, 'err'); }
+      finally { ocrBusy = false; $('camCapture').disabled = false; $('camCapture').textContent = '📸 Read order number'; }
+    }
+    async function found(no, how) {
+      foundNo = no; paused = true;                       // stop scanning behind the panel so the buttons respond instantly
+      $('camFoundNo').textContent = 'ORD-' + no; $('camFoundCust').textContent = 'Checking Cultivera…'; $('camFoundLabel').textContent = how;
+      $('camFoundOpen').disabled = false; $('camFound').classList.add('show'); status('Order number found', 'ok');
+      try { const o = await bridge('/api/order/' + no); if (foundNo === no) $('camFoundCust').textContent = o.customer + ' · ' + o.lines.length + ' lines · ' + o.status; }
+      catch (e) { if (foundNo === no) { $('camFoundCust').textContent = e.message; $('camFoundOpen').disabled = true; } }
+    }
+    function retake() { $('camFound').classList.remove('show'); foundNo = ''; lastCode = ''; armed = true; paused = false; status('Point at the top of the pick list'); }
+    function openFound() { const no = foundNo; close(); if (no) loadOrder(no); }
+    // Warm up the text reader in the background so the first photo does not wait for a 7 MB download + startup.
+    function prewarm() { if (supported() && !ocrWorker) getOcr().then(() => status('')).catch(() => {}); }
+
+    // The part of the video that sits inside the on-screen target box, in video pixel coordinates (object-fit: cover math).
+    function targetRect() {
+      const vw = video.videoWidth, vh = video.videoHeight; if (!vw || !vh) return null;
+      const el = video.getBoundingClientRect(), box = $('camFrame').getBoundingClientRect();
+      const scale = Math.max(el.width / vw, el.height / vh);
+      const offX = (el.width - vw * scale) / 2, offY = (el.height - vh * scale) / 2;
+      const x = (box.left - el.left - offX) / scale, y = (box.top - el.top - offY) / scale;
+      const w = box.width / scale, h = box.height / scale;
+      return { x: Math.max(0, x), y: Math.max(0, y), w: Math.min(vw - Math.max(0, x), w), h: Math.min(vh - Math.max(0, y), h) };
+    }
+
+    // Alternate between the enlarged target crop (small codes) and the full frame (large codes / off-centre).
+    function grabFrame(cropOnly) {
+      const r = cropOnly ? targetRect() : null;
+      if (r && r.w > 20 && r.h > 20) {
+        const scaleUp = Math.min(3, Math.max(1, 900 / r.w));
+        work.width = Math.round(r.w * scaleUp); work.height = Math.round(r.h * scaleUp);
+        work.getContext('2d', { willReadFrequently: true }).drawImage(video, r.x, r.y, r.w, r.h, 0, 0, work.width, work.height);
+      } else {
+        const vw = video.videoWidth, vh = video.videoHeight; const s = Math.min(1, 1280 / vw);
+        work.width = Math.round(vw * s); work.height = Math.round(vh * s);
+        work.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0, work.width, work.height);
+      }
+      return work;
+    }
+
+    let paused = false;   // barcode loop paused while the "order found" panel is up or OCR is running (keeps taps responsive)
+    async function loop() {
+      if (!running) return;
+      if (paused || ocrBusy) { timer = setTimeout(loop, 250); return; }
+      if (!busy && video.readyState >= 2) {
+        busy = true;
+        if (!armed && Date.now() - lastSeenAt > REARM_MS) { armed = true; status('Ready for the next unit'); }
+        try {
+          const cv = grabFrame(tick++ % 3 !== 2);          // two crop passes for every full-frame pass
+          if (det) { const codes = await det.detect(cv); if (codes.length) onCode(codes[0].rawValue); }
+          else if (zx) {
+            try {
+              const bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(cv)));
+              const r = zx.decodeWithState ? zx.decodeWithState(bitmap) : zx.decode(bitmap);
+              if (r) onCode(r.getText());
+            } catch (e) { /* nothing readable in this frame */ }
+          }
+        } catch (e) { /* skip frame */ }
+        busy = false;
+      }
+      timer = setTimeout(loop, mode === 'photo' ? 400 : 90);   // photo mode only needs to notice a QR pick list; go easy on the CPU
+    }
+
+    async function open(m) {
+      mode = m || 'pick'; lastCode = ''; lastAt = 0; lastSeenAt = 0; armed = true; torchOn = false; det = null; zx = null; tick = 0; foundNo = '';
+      if (!supported()) { alert('Camera scanning needs a camera and a secure (https) address.'); return; }
+      video = $('camVideo');
+      $('camWrap').classList.add('open'); $('camWrap').classList.toggle('photo', mode === 'photo');
+      $('camTorch').style.display = 'none'; $('camFound').classList.remove('show'); paused = false;
+      $('camCapture').style.display = mode === 'photo' ? '' : 'none'; $('camDone').textContent = mode === 'photo' ? 'Cancel' : 'Done';
+      $('camHint').textContent = mode === 'order' ? 'Line up the order barcode. The order loads automatically.'
+        : mode === 'photo' ? 'Fit the top of the pick list ("PICK LIST # 15685") inside the box, then tap Read order number. A QR pick list opens by itself.'
+        : 'Fill the box with the QR code, 4–6 inches away. Use the zoom slider for small labels. Tap Done when finished.';
+      status('Starting camera…');
+      try {
+        // A sheet of paper does not need 4K; smaller frames keep the Zebra responsive. Small labels get the higher resolution.
+        const res = mode === 'photo' ? { width: { ideal: 1920 }, height: { ideal: 1080 } } : { width: { ideal: 3840 }, height: { ideal: 2160 } };
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, ...res, advanced: [{ focusMode: 'continuous' }] },
+          audio: false,
+        });
+        video.srcObject = stream; await video.play().catch(() => {});
+        track = stream.getVideoTracks()[0];
+        await setupControls();
+        // Prefer the phone's own detector when it reads QR codes (Apple's and Google's are very good at small codes); else the bundled decoder.
+        let native = false;
+        if ('BarcodeDetector' in window) { try { native = (await BarcodeDetector.getSupportedFormats()).includes('qr_code'); } catch (e) { native = false; } }
+        if (native) det = new BarcodeDetector({ formats: ['qr_code', 'code_128', 'ean_13', 'upc_a', 'code_39', 'data_matrix', 'itf'] });
+        else {
+          await loadZxing();
+          const hints = new Map();
+          hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE, ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.CODE_39, ZXing.BarcodeFormat.DATA_MATRIX, ZXing.BarcodeFormat.ITF]);
+          hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+          zx = new ZXing.MultiFormatReader(); zx.setHints(hints);
+        }
+        running = true;
+        status('Point at the code' + (native ? '' : ' (bundled decoder)'));
+        loop();
+      } catch (e) {
+        const denied = /NotAllowed|Permission|denied/i.test(e.name + ' ' + e.message);
+        status(denied ? 'Camera access is blocked. Allow the camera for this site (Settings → Safari → Camera) and try again.' : 'Camera error: ' + e.message, 'err');
+      }
+    }
+
+    async function setupControls() {
+      const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+      $('camTorch').style.display = caps.torch ? '' : 'none';
+      // Fixed zoom, no slider: 2x for small package labels (pick mode), none for a sheet of paper (photo mode).
+      if (mode !== 'photo' && caps.zoom && caps.zoom.max > caps.zoom.min) {
+        const z = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 2));
+        try { await track.applyConstraints({ advanced: [{ zoom: z }] }); } catch (e) {}
+      }
+    }
+
+    function loadZxing() {
+      return new Promise((res, rej) => {
+        if (window.ZXing) return res();
+        const s = document.createElement('script'); s.src = '/static/zxing.min.js';
+        s.onload = res; s.onerror = () => rej(new Error('could not load the barcode decoder'));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function toggleTorch() {
+      if (!track) return;
+      try { await track.applyConstraints({ advanced: [{ torch: !torchOn }] }); torchOn = !torchOn; } catch (e) {}
+    }
+
+    function close() {
+      running = false; clearTimeout(timer); det = null; zx = null; $('camFound').classList.remove('show');
+      try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {} stream = null; track = null;
+      if (video) video.srcObject = null;
+      $('camWrap').classList.remove('open');
+    }
+
+    return { open, close, toggleTorch, supported, capture, openFound, retake, prewarm };
+  })();
+
+  /* ---------- boot ---------- */
+  async function boot() {
+    load();
+    if (!Cam.supported()) document.querySelectorAll('.cambtn').forEach(b => b.style.display = 'none');
+    let me;
+    try { me = await bridge('/api/me'); } catch (e) { return; }          // 401 already switched to the sign-in screen
+    if (!state.picker && me.pickerName) { state.picker = me.pickerName; save(); }
+    $('signOutBtn').style.display = me.open ? 'none' : '';
+    if (state.active && state.orders[state.active]) { order = state.orders[state.active]; enterPick(); renderPickerName(); }
+    else { renderHome(); show('scr-home'); }
+    flush();
+    setTimeout(Cam.prewarm, 2500);
+  }
+  boot();
+
+  return { loadOrder, refreshOrder, finishPick, copyReport, backToPick, goHome, clearOrder, openKeyEntry, submitKeyEntry, closeSheet, handleScan, setPicker, flush, signIn, signOut,
+           currentOrderNo: () => order ? order.orderNo : '',
+           openCamera: Cam.open, closeCamera: Cam.close, toggleTorch: Cam.toggleTorch, capturePhoto: Cam.capture, photoOpen: Cam.openFound, photoRetake: Cam.retake };
+})();
+</script>

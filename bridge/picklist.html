@@ -1,0 +1,68 @@
+<title>Pick List</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Nunito+Sans:wght@400;600;700&display=swap">
+<style>
+  :root{--navy:#223549;--gold:#c0a341;--line:#cfd6de;--text:#1a1d21;--muted:#64748b}
+  *{box-sizing:border-box}
+  body{margin:0;background:#e9ecf0;color:var(--text);font-family:"Nunito Sans",Inter,system-ui,sans-serif;font-size:13px;line-height:1.35}
+  .toolbar{display:flex;gap:8px;align-items:center;padding:10px 16px;background:var(--navy);color:#fff}
+  .toolbar img{height:20px}
+  .toolbar .sp{flex:1}
+  .toolbar button,.toolbar a{font:700 13px "Nunito Sans",sans-serif;padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;cursor:pointer;text-decoration:none}
+  .toolbar button.primary{background:var(--gold);border-color:var(--gold)}
+  .sheet{background:#fff;width:8.5in;min-height:11in;margin:16px auto;padding:.5in .55in;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+  .head{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;border-bottom:2px solid var(--navy);padding-bottom:12px}
+  .head h1{font-family:Nunito,sans-serif;font-size:22px;margin:0;color:var(--navy);letter-spacing:.02em}
+  .head .no{font-family:Nunito,sans-serif;font-size:30px;font-weight:800;color:var(--navy);line-height:1}
+  .qrbox{text-align:center}
+  .qrbox canvas{display:block;image-rendering:pixelated}
+  .qrbox .cap{font-size:11px;color:var(--muted);margin-top:2px;font-weight:700;letter-spacing:.06em}
+  .meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin:12px 0}
+  .meta .k{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .meta .v{font-weight:700}
+  .meta .v small{font-weight:400;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;border-bottom:1px solid var(--navy);padding:6px 6px}
+  td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:15px}
+  td.idx{color:var(--muted);width:24px}
+  .lot{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+  .lot b{font-size:14px;color:var(--navy)}
+  .loc{display:inline-block;font-weight:800;color:var(--navy);background:#eef1f5;border-radius:5px;padding:1px 7px;white-space:nowrap}
+  .sec{color:var(--muted);font-style:italic}
+  .box{width:16px;height:16px;border:1.5px solid var(--navy);border-radius:3px;display:inline-block;vertical-align:middle}
+  .foot{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:16px;border-top:1px solid var(--line);padding-top:8px}
+  .err{background:#fee2e2;color:#991b1b;padding:14px;border-radius:8px;margin:20px}
+  @media print{body{background:#fff}.toolbar{display:none}.sheet{margin:0;box-shadow:none;width:auto;min-height:0;padding:0}@page{margin:.5in}}
+</style>
+<div class="toolbar"><img src="/static/oleum-wordmark-white.png" alt="Oleum"><span style="font-size:11px;letter-spacing:.2em;color:#d4b84e;font-weight:700">PICK LIST</span><span class="sp"></span><a href="/">← Orders</a><button class="primary" onclick="window.print()">Print</button></div>
+<div id="out"></div>
+<script src="/static/qr.js"></script>
+<script>
+(async () => {
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const no = (location.pathname.match(/\/picklist\/(\d+)/) || [])[1];
+  const out = document.getElementById('out');
+  if (!no) { out.innerHTML = '<div class="err">No order number in the address. Use /picklist/15685</div>'; return; }
+  const r = await fetch('/api/order/' + no, { credentials: 'same-origin' });
+  const o = await r.json().catch(() => ({ error: 'unreadable response' }));
+  if (!r.ok) { out.innerHTML = '<div class="err">' + esc(o.error || ('Error ' + r.status)) + (r.status === 401 ? ' — <a href="/">sign in</a> first.' : '') + '</div>'; return; }
+  document.title = 'Pick List ORD-' + o.orderNo + ' ' + o.customer;
+  const units = o.lines.reduce((s, l) => s + l.allocs.reduce((a, x) => a + x.qty, 0), 0);
+  const lots = o.lines.reduce((s, l) => s + l.allocs.length, 0);
+  let rows = '', i = 0;
+  for (const l of o.lines) {
+    const loc = !l.location ? '' : (l.locationSource === 'productLine' ? '<span class="sec">' + esc(l.location) + '</span>' : '<span class="loc">' + esc(l.location) + '</span>');
+    if (!l.allocs.length) { rows += '<tr><td class="idx">' + (++i) + '</td><td>' + esc(l.name) + '</td><td>' + loc + '</td><td class="lot" style="color:#b91c1c">not allocated</td><td class="n">' + l.qty + '</td><td><span class="box"></span></td></tr>'; continue; }
+    for (const a of l.allocs) {
+      const bc = a.barcodes[0], aloc = a.location && a.location !== l.location && l.locationSource !== 'productLine' ? '<span class="loc">' + esc(a.location) + '</span>' : loc;
+      rows += '<tr><td class="idx">' + (++i) + '</td><td>' + esc(l.name) + (l.sample ? ' <small>(sample)</small>' : '') + '</td><td>' + aloc + '</td><td class="lot">' + esc(bc.slice(0, -4)) + '<b>' + esc(bc.slice(-4)) + '</b></td><td class="n">' + a.qty + '</td><td><span class="box"></span></td></tr>';
+    }
+  }
+  out.innerHTML = '<div class="sheet"><div class="head"><div><h1>PICK LIST</h1><div class="no">ORD-' + esc(o.orderNo) + '</div><div style="margin-top:6px;font-size:16px;font-weight:700">' + esc(o.customer) + '</div><div style="color:var(--muted)">Status: ' + esc(o.status) + (o.cancelled ? ' · CANCELLED' : '') + '</div></div><div class="qrbox" id="qr"><div class="cap">SCAN TO OPEN</div></div></div>' +
+    '<div class="meta"><div><div class="k">Products</div><div class="v">' + o.lines.length + '</div></div><div><div class="k">Lots</div><div class="v">' + lots + '</div></div><div><div class="k">Units</div><div class="v">' + units + '</div></div></div>' +
+    '<table><tr><th>#</th><th>Product</th><th>Location</th><th>Allocated lot</th><th style="text-align:right">Qty</th><th></th></tr>' + rows + '</table>' +
+    '<div class="foot"><span>Generated ' + new Date().toLocaleString() + ' from Cultivera · oleumorders.com</span><span>Picker: ______________</span></div></div>';
+  const m = QR.encode(String(o.orderNo));
+  if (m) { const cv = QR.toCanvas(m, 5); cv.style.width = '1.25in'; cv.style.height = '1.25in'; document.getElementById('qr').prepend(cv); }
+})();
+</script>

@@ -1,0 +1,39 @@
+{
+  "cultiveraUsername": "PUT-CULTIVERA-LOGIN-HERE",
+  "cultiveraPassword": "PUT-CULTIVERA-PASSWORD-HERE",
+  "pickerName": "Picker",
+  "port": 8080,
+  "accessKey": "",
+  "appPassword": "",
+  "publicUrl": "https://oleumorders.com",
+  "cacheSeconds": 20,
+  "locations": {
+    "file": "C:\\Users\\PUT-WINDOWS-USER-HERE\\OneDrive - Oleum Labs\\Inventory Key.xlsx",
+    "sheets": [
+      "Honey Crystal",
+      "Live Resin",
+      "Overstock",
+      "Neon"
+    ],
+    "nameColumn": "Item Name",
+    "typeColumn": "Product Type",
+    "locationColumn": "Slot",
+    "overstockSheet": "Overstock",
+    "overstockOnlyTypes": [
+      "sugar cone",
+      "liquid diamond",
+      "live resin cartridge",
+      "live resin stick",
+      "cured resin stick",
+      "cured diamond",
+      "momo"
+    ],
+    "barcodeColumn": "Barcode"
+  },
+  "updates": {
+    "repo": "GITHUB-USER/pickcheck",
+    "branch": "main",
+    "token": "",
+    "autoHour": null
+  }
+}

@@ -1,0 +1,168 @@
+<title>Oleum Orders · Reports</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Nunito+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --navy:#223549; --gold:#c0a341; --gold-400:#d4b84e; --gold-600:#a08a30;
+    --ground:#f0f2f5; --surface:#fff; --surface-2:#f8fafc; --surface-3:#e8ecf0; --line:#dbe3ec;
+    --text:#1a1d21; --text-2:#64748b; --muted:#94a3b8;
+    --go:#16a34a; --go-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7; --err:#dc2626; --err-bg:#fee2e2;
+    --sans:"Nunito Sans",Inter,system-ui,-apple-system,sans-serif; --head:"Nunito","Nunito Sans",system-ui,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .appbar{height:52px;background:var(--navy);color:#fff;display:flex;align-items:center;gap:12px;padding:0 20px}
+  .appbar img{height:22px;width:auto;display:block}
+  .appbar .eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-400);font-weight:700;margin-top:2px}
+  .appbar a{margin-left:auto;color:#cbd5e1;text-decoration:none;font-size:13px;font-weight:600}
+  .appbar a:hover{color:#fff}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px 20px 60px}
+  h1,h2{font-family:var(--head);font-weight:800;letter-spacing:-.01em;margin:0;color:var(--navy)}
+  h1{font-size:24px}
+  h2{font-size:17px;margin:26px 0 10px}
+  .range{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  .range button,.range a{font-family:var(--sans);font-size:13px;font-weight:700;padding:8px 14px;border-radius:8px;background:var(--surface);color:var(--navy);border:1px solid var(--line);cursor:pointer;text-decoration:none}
+  .range button.on{background:var(--gold);color:#fff;border-color:var(--gold)}
+  .range input{font-family:var(--sans);font-size:13px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+  .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
+  .tot{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  .tot .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+  .tot .v{font-family:var(--head);font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px;color:var(--navy)}
+  .tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2);background:var(--surface-2)}
+  td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:none}
+  .pill{font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px;background:var(--surface-3);color:var(--text-2)}
+  .pill.ok{background:var(--go-bg);color:var(--go)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.err{background:var(--err-bg);color:var(--err)}
+  .empty{color:var(--muted);padding:18px;text-align:center}
+  .muted{color:var(--text-2)}
+  .ev-scan_ok{color:var(--go);font-weight:700} .ev-scan_rejected{color:var(--err);font-weight:700} .ev-order_verified,.ev-order_complete{color:var(--gold-600);font-weight:700} .ev-order_issues,.ev-line_short{color:var(--warn);font-weight:700}
+  .notice{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:16px}
+  .range-btn{font-family:var(--sans);font-size:13px;font-weight:700;padding:8px 14px;border-radius:8px;background:var(--gold);color:#fff;border:1px solid var(--gold);cursor:pointer}
+  .range-btn.secondary{background:var(--surface);color:var(--navy);border-color:var(--line)}
+  .range-btn:disabled{opacity:.5;cursor:default}
+</style>
+
+<div class="appbar"><img src="/static/oleum-wordmark-white.png" alt="Oleum"><span class="eyebrow">Orders · Reports</span><a href="/">← Pick app</a></div>
+<div class="wrap">
+  <h1>Pick reports</h1>
+  <div class="notice" id="updBox" style="margin:14px 0 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px"><div style="font-weight:700">Bridge software</div><div class="muted" id="updText">Checking version…</div></div>
+    <button id="updBtn" class="range-btn" style="display:none">Update now</button>
+    <button id="rbBtn" class="range-btn" style="display:none">Roll back</button>
+  </div>
+  <div class="range">
+    <button data-r="today" class="on">Today</button>
+    <button data-r="week">7 days</button>
+    <button data-r="month">30 days</button>
+    <input type="date" id="from"> <span class="muted">to</span> <input type="date" id="to">
+    <button id="apply">Apply</button>
+    <a id="csv" href="#" download>Download CSV</a>
+  </div>
+  <div class="totals" id="totals"></div>
+
+  <h2>By day</h2>
+  <div class="tablewrap"><table id="days"></table></div>
+
+  <h2>Orders</h2>
+  <div class="tablewrap"><table id="orders"></table></div>
+
+  <h2>Event log <span class="muted" style="font-size:13px;font-weight:400">(latest 300 in range)</span></h2>
+  <div class="tablewrap"><table id="events"></table></div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const fmtTime = s => { const d = new Date(s); return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+
+  function setRange(kind) {
+    const to = new Date(), from = new Date();
+    if (kind === 'week') from.setDate(from.getDate() - 6);
+    if (kind === 'month') from.setDate(from.getDate() - 29);
+    $('from').value = iso(from); $('to').value = iso(to);
+    document.querySelectorAll('.range button[data-r]').forEach(b => b.classList.toggle('on', b.dataset.r === kind));
+    refresh();
+  }
+
+  async function refresh() {
+    const q = '?from=' + $('from').value + '&to=' + $('to').value;
+    $('csv').href = '/api/picks.csv' + q;
+    const [sr, pr] = await Promise.all([fetch('/api/stats' + q, { credentials: 'same-origin' }), fetch('/api/picks' + q, { credentials: 'same-origin' })]);
+    if (sr.status === 401) { $('totals').innerHTML = '<div class="notice">Sign in on the <a href="/">pick app</a> first, then come back to this page.</div>'; return; }
+    const stats = await sr.json(), picks = await pr.json();
+    if (stats.error) { $('totals').innerHTML = '<div class="notice">' + esc(stats.error) + '</div>'; return; }
+    const t = stats.totals;
+    const tot = (k, v) => '<div class="tot"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>';
+    $('totals').innerHTML = tot('Orders verified', t.ordersVerified) + tot('Orders started', t.ordersStarted) + tot('Units picked', t.units) +
+      tot('Scans', t.scans) + tot('Rejected scans', t.rejected) + tot('Avg min / order', t.avgMinutesPerOrder == null ? '—' : t.avgMinutesPerOrder);
+
+    $('days').innerHTML = stats.days.length
+      ? '<tr><th>Day</th><th class="n">Orders started</th><th class="n">Verified</th><th class="n">Units</th><th class="n">Scans</th><th class="n">Rejected</th><th class="n">Count entries</th><th class="n">Shorts</th></tr>' +
+        stats.days.map(d => '<tr><td>' + d.day + '</td><td class="n">' + d.ordersStarted + '</td><td class="n">' + d.ordersVerified + '</td><td class="n">' + d.units + '</td><td class="n">' + d.scans + '</td><td class="n">' + d.rejected + '</td><td class="n">' + d.counts + '</td><td class="n">' + d.shorts + '</td></tr>').join('')
+      : '<tr><td class="empty">No picks in this range.</td></tr>';
+
+    const pill = s => '<span class="pill ' + (s === 'verified' ? 'ok' : s === 'in progress' ? 'warn' : s === 'cleared' ? '' : 'err') + '">' + esc(s) + '</span>';
+    $('orders').innerHTML = stats.orders.length
+      ? '<tr><th>Order</th><th>Customer</th><th>Picker</th><th>Started</th><th>Finished</th><th class="n">Minutes</th><th class="n">Lines</th><th class="n">Units / target</th><th class="n">Rejected</th><th>Status</th></tr>' +
+        stats.orders.map(o => '<tr><td>ORD-' + esc(o.orderNo) + '</td><td>' + esc(o.customer) + '</td><td>' + esc(o.picker) + '</td><td>' + fmtTime(o.first) + '</td><td>' + (o.finished ? fmtTime(o.finished) : '—') + '</td><td class="n">' + (o.minutes == null ? '—' : o.minutes) + '</td><td class="n">' + o.lines + '</td><td class="n">' + o.units + ' / ' + o.targetUnits + '</td><td class="n">' + o.rejected + '</td><td>' + pill(o.status) + '</td></tr>').join('')
+      : '<tr><td class="empty">No orders in this range.</td></tr>';
+
+    const evs = picks.events.slice(-300).reverse();
+    $('events').innerHTML = evs.length
+      ? '<tr><th>Time</th><th>Picker</th><th>Order</th><th>Event</th><th>Product</th><th>Lot</th><th class="n">Before → after / target</th><th>Detail</th></tr>' +
+        evs.map(e => '<tr><td>' + fmtTime(e.timestamp) + '</td><td>' + esc(e.picker) + '</td><td>' + (e.orderNo ? 'ORD-' + esc(e.orderNo) : '') + '</td><td class="ev-' + esc(e.event) + '">' + esc(e.event) + '</td><td>' + esc(e.product) + '</td><td style="font-family:var(--mono);font-size:12px">' + esc(e.lot) + '</td><td class="n">' + (e.event === 'order_loaded' || e.event === 'order_refreshed' ? e.before + ' lines / ' + e.target + ' units' : (e.event === 'order_verified' || e.event === 'order_issues') ? e.before + ' / ' + e.target + ' units · ' + e.after + ' lines OK' : (e.target ? e.before + ' → ' + e.after + ' / ' + e.target : '')) + '</td><td class="muted">' + esc(e.detail) + '</td></tr>').join('')
+      : '<tr><td class="empty">No events in this range.</td></tr>';
+  }
+
+  document.querySelectorAll('.range button[data-r]').forEach(b => b.onclick = () => setRange(b.dataset.r));
+  $('apply').onclick = () => { document.querySelectorAll('.range button[data-r]').forEach(b => b.classList.remove('on')); refresh(); };
+  setRange('today');
+
+  /* ---- bridge software updates ---- */
+  const fmtWhen = s => s ? new Date(s).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  async function updStatus() {
+    try {
+      const r = await fetch('/api/update/status', { credentials: 'same-origin' }); const s = await r.json();
+      if (!r.ok) throw new Error(s.error || r.status);
+      const cur = s.current || {};
+      if (!s.configured) { $('updText').textContent = 'Running ' + (cur.sha ? cur.sha.slice(0, 7) : 'a hand-installed version') + '. No update source configured.'; return; }
+      const curTxt = cur.sha ? cur.sha.slice(0, 7) + ' (' + fmtWhen(cur.at) + ')' : 'hand-installed version';
+      if (s.updateAvailable) {
+        $('updText').innerHTML = 'Running <b>' + esc(curTxt) + '</b>. <b>Update available:</b> ' + esc(s.latest.sha.slice(0, 7)) + ' — ' + esc(s.latest.message) + ' (' + fmtWhen(s.latest.at) + ').' + (s.autoHour != null ? ' Installs automatically at ' + s.autoHour + ':00 if not done sooner.' : '');
+        $('updBtn').style.display = '';
+      } else { $('updText').textContent = 'Up to date: ' + curTxt + '.'; $('updBtn').style.display = 'none'; }
+      $('rbBtn').style.display = cur.sha ? '' : 'none'; $('rbBtn').className = 'range-btn secondary';
+    } catch (e) { $('updText').textContent = 'Could not check for updates: ' + e.message; }
+  }
+  async function waitForRestart(label) {
+    $('updText').textContent = label + ' Restarting the bridge…';
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      try { const h = await fetch('/api/health', { credentials: 'same-origin', cache: 'no-store' }); if (h.ok) { const j = await h.json(); if (j.startedAt && Date.parse(j.startedAt) > Date.now() - 60000) { await updStatus(); $('updText').textContent += ' Restarted OK.'; return; } } } catch (e) {}
+    }
+    $('updText').textContent = 'The bridge did not come back within a minute. On the bridge PC run: nssm restart PickCheck';
+  }
+  $('updBtn').onclick = async () => {
+    if (!confirm('Update the bridge now? Anyone mid-pick will see a short pause (about 10 seconds); their progress is kept.')) return;
+    $('updBtn').disabled = true; $('updText').textContent = 'Downloading and checking the new version…';
+    try { const r = await fetch('/api/update/apply', { method: 'POST', credentials: 'same-origin' }); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); await waitForRestart('Update ' + j.version.sha.slice(0, 7) + ' installed.'); }
+    catch (e) { $('updText').textContent = 'Update failed, nothing was changed: ' + e.message; }
+    finally { $('updBtn').disabled = false; }
+  };
+  $('rbBtn').onclick = async () => {
+    if (!confirm('Roll back to the previous version of the bridge?')) return;
+    $('rbBtn').disabled = true;
+    try { const r = await fetch('/api/update/rollback', { method: 'POST', credentials: 'same-origin' }); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); await waitForRestart('Previous version restored (' + j.restored + ' files).'); }
+    catch (e) { $('updText').textContent = 'Roll back failed: ' + e.message; }
+    finally { $('rbBtn').disabled = false; }
+  };
+  updStatus();
+})();
+</script>

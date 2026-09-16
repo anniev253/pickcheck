@@ -1,0 +1,10 @@
+# secrets and local state never go to GitHub
+bridge/config.json
+bridge/data/
+bridge/logs/
+bridge/backup/
+bridge/VERSION
+bridge/HANDOFF.md
+bridge/ngrok.yml
+*.zip
+Thumbs.db
