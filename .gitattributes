@@ -1,0 +1,4 @@
+# keep files byte-for-byte as committed (the warehouse PC downloads them straight from GitHub)
+* -text
+# Windows batch files must have CRLF line endings or "goto" labels can fail
+*.cmd text eol=crlf
