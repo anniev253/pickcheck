@@ -138,6 +138,29 @@ Order of precedence: barcode on the sheet, then item name + type, then the produ
 
 `/api/health` reports whether the workbook loaded and how many rows each tab contributed.
 
+## If the warehouse PC goes down
+
+What still works: any order already loaded on the gun can be picked to the end (the gun keeps the
+order and queues its log locally, and sends the log when the bridge is back). What stops: opening
+new orders, locations, reports.
+
+Failover, about two minutes on any Windows PC that has this folder with a `config.json` and the
+tunnel files in `%USERPROFILE%\.cloudflared` (Annie's laptop has both):
+
+1. Right-click `takeover.cmd` > Run as administrator. It starts the bridge, installs and starts
+   the tunnel service, and prints the tunnel's connections. oleumorders.com then works again.
+2. When the warehouse PC is back and its bridge answers, run `standdown.cmd` (as administrator)
+   on the stand-in PC so only one machine serves.
+
+Nothing on the warehouse PC is unique: the code is on GitHub, the workbook is a share link, and
+the tunnel identity is the three `.cloudflared` files. Keep a copy of `config.json` and those three
+files somewhere safe (they hold passwords; not in GitHub). The one thing that lives only on the
+serving PC is the pick history in `bridge\data\`; download it now and then from the reports page
+(Download CSV) if it matters.
+
+For a setup that does not depend on any office PC at all, the bridge can run on a small cloud
+server (about $5/month) with exactly the same files; the gun would not notice the difference.
+
 ## Updating the bridge from GitHub
 
 The code lives in a GitHub repository. The bridge can fetch the latest version itself, so changes

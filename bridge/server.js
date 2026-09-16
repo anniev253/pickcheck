@@ -420,7 +420,7 @@ const { readZip } = require('./locations.js');
 const APP_ROOT = path.join(ROOT, '..');
 const VERSION_FILE = path.join(ROOT, 'VERSION');
 const BACKUP_DIR = path.join(ROOT, 'backup');
-const UPDATABLE = /^(pickcheck\.html|bridge\/(server\.js|locations\.js|reports\.html|picklist\.html|README\.md|MOVE-TO-NEW-PC\.md|config\.example\.json|[A-Za-z0-9._-]+\.cmd|static\/[^/]+))$/;
+const UPDATABLE = /^(pickcheck\.html|bridge\/(server\.js|locations\.js|reports\.html|picklist\.html|README\.md|MOVE-TO-NEW-PC\.md|config\.example\.json|[A-Za-z0-9._-]+\.cmd|static\/[^/]+))$/;   // .cmd covers takeover/standdown too
 
 function currentVersion() { try { return JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8')); } catch (e) { return { sha: null, at: null, message: 'installed by hand (no version recorded)' }; } }
 const shortSha = s => (s || '').slice(0, 7);
