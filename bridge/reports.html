@@ -61,6 +61,7 @@
     <input type="date" id="from"> <span class="muted">to</span> <input type="date" id="to">
     <button id="apply">Apply</button>
     <a id="csv" href="#" download>Download CSV</a>
+    <span class="muted" id="liveStamp" style="margin-left:auto;font-size:12px"></span>
   </div>
   <div class="totals" id="totals"></div>
 
@@ -91,7 +92,7 @@
     refresh();
   }
 
-  async function refresh() {
+  let refresh = async function () {
     const q = '?from=' + $('from').value + '&to=' + $('to').value;
     $('csv').href = '/api/picks.csv' + q;
     const [sr, pr] = await Promise.all([fetch('/api/stats' + q, { credentials: 'same-origin' }), fetch('/api/picks' + q, { credentials: 'same-origin' })]);
@@ -124,6 +125,15 @@
   document.querySelectorAll('.range button[data-r]').forEach(b => b.onclick = () => setRange(b.dataset.r));
   $('apply').onclick = () => { document.querySelectorAll('.range button[data-r]').forEach(b => b.classList.remove('on')); refresh(); };
   setRange('today');
+
+  // Live: refresh the numbers every 30 seconds while the page is open, and immediately when it comes back into view.
+  let lastRefreshed = Date.now();
+  const stamp = () => { lastRefreshed = Date.now(); const el = $('liveStamp'); if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }); };
+  const origRefresh = refresh;
+  refresh = async function () { await origRefresh(); stamp(); };
+  setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastRefreshed > 5000) refresh(); });
+  stamp();
 
   /* ---- bridge software updates ---- */
   const fmtWhen = s => s ? new Date(s).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
