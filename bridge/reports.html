@@ -39,7 +39,7 @@
   .pill.ok{background:var(--go-bg);color:var(--go)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.err{background:var(--err-bg);color:var(--err)}
   .empty{color:var(--muted);padding:18px;text-align:center}
   .muted{color:var(--text-2)}
-  .ev-scan_ok{color:var(--go);font-weight:700} .ev-scan_rejected{color:var(--err);font-weight:700} .ev-order_verified,.ev-order_complete{color:var(--gold-600);font-weight:700} .ev-order_issues,.ev-line_short{color:var(--warn);font-weight:700}
+  .ev-scan_ok{color:var(--go);font-weight:700} .ev-scan_rejected{color:var(--err);font-weight:700} .ev-order_verified,.ev-order_complete,.ev-erp_marked{color:var(--gold-600);font-weight:700} .ev-erp_failed{color:var(--err);font-weight:700} .ev-order_issues,.ev-line_short{color:var(--warn);font-weight:700}
   .notice{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:16px}
   .range-btn{font-family:var(--sans);font-size:13px;font-weight:700;padding:8px 14px;border-radius:8px;background:var(--gold);color:#fff;border:1px solid var(--gold);cursor:pointer}
   .range-btn.secondary{background:var(--surface);color:var(--navy);border-color:var(--line)}
@@ -53,6 +53,29 @@
     <div style="flex:1;min-width:240px"><div style="font-weight:700">Bridge software</div><div class="muted" id="updText">Checking version…</div></div>
     <button id="updBtn" class="range-btn" style="display:none">Update now</button>
     <button id="rbBtn" class="range-btn" style="display:none">Roll back</button>
+  </div>
+  <div class="notice" id="erpBox" style="margin:10px 0 0">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px"><div style="font-weight:700">ERP link</div><div class="muted" id="erpText">Checking…</div></div>
+      <button class="range-btn secondary" id="erpToggle">Settings</button>
+    </div>
+    <div id="erpForm" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="muted" style="margin-bottom:8px">When the gun completes an order, the bridge marks it <b>Picked</b> on production.oleumlabs.com → Sales → Deliveries (only orders already on that calendar). It signs in to the ERP with this account; use one that is allowed to edit deliveries.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="erpEmail" type="email" placeholder="ERP email" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+        <input id="erpPw" type="password" placeholder="ERP password (leave blank to keep)" autocomplete="new-password" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="erpEnabled"> Enabled</label>
+        <select id="erpMarkOn" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px"><option value="complete">Mark when every unit is scanned</option><option value="verified">Mark only when Finish & verify passes</option></select>
+        <button class="range-btn" id="erpSave">Save</button>
+        <button class="range-btn secondary" id="erpTest">Test connection</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <input id="erpOrder" inputmode="numeric" placeholder="Order # (e.g. 15742)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;width:170px">
+        <button class="range-btn secondary" id="erpCheck">Check in ERP</button>
+        <button class="range-btn secondary" id="erpMark">Mark picked now</button>
+        <span class="muted" id="erpResult" style="font-size:13px"></span>
+      </div>
+    </div>
   </div>
   <div class="range">
     <button data-r="today" class="on">Today</button>
@@ -175,5 +198,44 @@
     finally { $('rbBtn').disabled = false; }
   };
   updStatus();
+
+  /* ---- ERP link ---- */
+  const post = (u, body) => fetch(u, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.status); return j; });
+  async function erpStatus() {
+    try {
+      const s = await fetch('/api/erp/status', { credentials: 'same-origin' }).then(r => r.json());
+      if (s.error) throw new Error(s.error);
+      $('erpEmail').value = s.email || ''; $('erpEnabled').checked = !!s.enabled; $('erpMarkOn').value = s.markOn || 'complete';
+      const lastTxt = s.last ? ' Last: ' + fmtWhen(s.last.at) + ' — ' + s.last.message : '';
+      $('erpText').textContent = !s.configured ? 'Not set up. Open Settings and enter an ERP login.'
+        : !s.enabled ? 'Off (login saved as ' + s.email + ').' + lastTxt
+        : 'On: completed orders are marked Picked on the ERP deliveries page as ' + s.email + '.' + lastTxt;
+    } catch (e) { $('erpText').textContent = 'Could not read ERP link status: ' + e.message; }
+  }
+  $('erpToggle').onclick = () => { const f = $('erpForm'); f.style.display = f.style.display === 'none' ? '' : 'none'; };
+  $('erpSave').onclick = async () => {
+    $('erpResult').textContent = 'Saving…';
+    try { await post('/api/settings/erp', { email: $('erpEmail').value, password: $('erpPw').value, enabled: $('erpEnabled').checked, markOn: $('erpMarkOn').value }); $('erpPw').value = ''; $('erpResult').textContent = 'Saved.'; await erpStatus(); }
+    catch (e) { $('erpResult').textContent = 'Save failed: ' + e.message; }
+  };
+  $('erpTest').onclick = async () => {
+    $('erpResult').textContent = 'Signing in to the ERP…';
+    try { const r = await post('/api/erp/test'); $('erpResult').textContent = 'Connected as ' + r.email + (r.canWrite ? ' — allowed to edit deliveries.' : ' — NOT allowed to edit deliveries (account not matched to a CRM user).'); }
+    catch (e) { $('erpResult').textContent = 'Test failed: ' + e.message; }
+  };
+  $('erpCheck').onclick = async () => {
+    const no = $('erpOrder').value.replace(/\D/g, ''); if (!no) return;
+    $('erpResult').textContent = 'Checking…';
+    try { const r = await fetch('/api/erp/delivery/' + no, { credentials: 'same-origin' }).then(r => r.json()); if (r.error) throw new Error(r.error); const d = r.delivery; $('erpResult').textContent = d ? 'ORD-' + no + ' on the ERP calendar: pick status "' + (d.pick_status || 'none') + '"' + (d.picked_at ? ', picked ' + fmtWhen(d.picked_at) : '') + (d.scheduled_date ? ', scheduled ' + d.scheduled_date : '') + (d.driver ? ', driver ' + d.driver : '') : 'ORD-' + no + ' is not on the ERP deliveries calendar.'; }
+    catch (e) { $('erpResult').textContent = 'Check failed: ' + e.message; }
+  };
+  $('erpMark').onclick = async () => {
+    const no = $('erpOrder').value.replace(/\D/g, ''); if (!no) return;
+    if (!confirm('Mark ORD-' + no + ' as Picked on the ERP deliveries page?')) return;
+    $('erpResult').textContent = 'Marking…';
+    try { const r = await post('/api/erp/mark/' + no); $('erpResult').textContent = r.message; await erpStatus(); }
+    catch (e) { $('erpResult').textContent = 'Failed: ' + e.message; }
+  };
+  erpStatus();
 })();
 </script>

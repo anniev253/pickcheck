@@ -35,7 +35,22 @@ function loadConfig() {
   //               "hour" installs only at updates.autoHour; "manual" only via the reports page.
   out.updates = Object.assign({ repo: '', branch: 'main', token: '', autoHour: null, auto: 'idle', idleMinutes: 15 }, c.updates || {});
   if (out.updates.autoHour != null && !(c.updates && c.updates.auto)) out.updates.auto = 'hour';
+  // ERP link: mark the order "Picked" on production.oleumlabs.com/sales/deliveries when the gun completes it.
+  out.erp = Object.assign({
+    enabled: false, email: '', password: '', markOn: 'complete',
+    mainUrl: 'https://kzpgmyqcpnyjtswfelty.supabase.co',
+    mainAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6cGdteXFjcG55anRzd2ZlbHR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NzM2NDYsImV4cCI6MjA5MTM0OTY0Nn0.5bjb12avK7leOCQpZeJPEYH7pYZkufqwwJE4CDLrx-c',
+    crmUrl: 'https://jbnnajhsedncqtaeuyok.supabase.co',
+    crmAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impibm5hamhzZWRuY3F0YWV1eW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTA5MzUsImV4cCI6MjA5NDc4NjkzNX0.1M_yPKsOoCUkjKAsIk40BxcKlqNrNPbLNOJoNnRqgD4',
+  }, c.erp || {});
   return out;
+}
+function saveConfigPatch(patch) {
+  // Merge a partial object into config.json on disk (used by the settings form on the reports page).
+  const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  for (const [k, v] of Object.entries(patch)) raw[k] = (v && typeof v === 'object' && !Array.isArray(v)) ? Object.assign({}, raw[k] || {}, v) : v;
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2) + '\n');
+  return raw;
 }
 function fail(msg) { console.error('\n' + msg + '\n'); process.exit(1); }
 const cfg = loadConfig();
@@ -252,6 +267,7 @@ const REPORTS_HTML = path.join(ROOT, 'reports.html');
 const CSV_HEADER = ['timestamp', 'picker', 'orderNo', 'customer', 'event', 'product', 'lot', 'before', 'after', 'target', 'detail'];
 let lastEventAt = 0;   // when the gun last reported activity (used to avoid updating mid-pick)
 const EVENT_TYPES = new Set(['order_loaded', 'order_refreshed', 'scan_ok', 'scan_rejected', 'count_set', 'line_short', 'line_unshort', 'line_reset', 'order_complete', 'order_verified', 'order_issues', 'order_cleared']);
+// (the bridge itself also writes 'erp_marked' / 'erp_failed' rows; those never come from the gun)
 
 const pad = n => String(n).padStart(2, '0');
 const localDay = ts => { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
@@ -415,6 +431,88 @@ function signOut(req, res) {
   return send(res, 200, { ok: true });
 }
 
+// ---------------------------------------------------------------- ERP link (Oleum ERP deliveries page)
+// Mirrors what "Mark picked" does on production.oleumlabs.com/sales/deliveries: sign in to the ERP as a user, get a
+// CRM token from the ERP's crm-read-session function, then update crm_deliveries.pick_status for the order.
+const erp = (() => {
+  let main = null;       // { accessToken, refreshToken, exp, email }
+  let crm = null;        // { token, exp, email, matched }
+  let last = null;       // last outcome, for the reports page
+  const marked = new Map();   // orderNo -> ISO time, this process
+  const c = () => cfg.erp;
+  const configured = () => !!(c().email && c().password);
+  const jwtExp = t => { try { return (JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString()).exp || 0) * 1000; } catch (e) { return 0; } };
+
+  async function signIn() {
+    const r = await fetch(c().mainUrl + '/auth/v1/token?grant_type=password', { method: 'POST', signal: AbortSignal.timeout(20000),
+      headers: { apikey: c().mainAnonKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: c().email, password: c().password }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) throw new Error('ERP sign-in failed: ' + (j.error_description || j.msg || j.error || ('HTTP ' + r.status)));
+    main = { accessToken: j.access_token, refreshToken: j.refresh_token, exp: jwtExp(j.access_token), email: (j.user && j.user.email) || c().email };
+    crm = null;
+  }
+  async function crmSession() {
+    if (!main || Date.now() > main.exp - 60000) await signIn();
+    if (crm && Date.now() < crm.exp - 60000) return crm;
+    const r = await fetch(c().mainUrl + '/functions/v1/crm-read-session', { method: 'POST', signal: AbortSignal.timeout(20000),
+      headers: { apikey: c().mainAnonKey, Authorization: 'Bearer ' + main.accessToken, 'Content-Type': 'application/json' }, body: '{}' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) throw new Error('ERP could not open a CRM session for ' + main.email + ' (HTTP ' + r.status + ')');
+    crm = { token: j.access_token, exp: jwtExp(j.access_token) || Date.now() + 50 * 60000, email: j.crm_email || main.email, matched: !!j.matched };
+    if (!crm.matched) throw new Error('The ERP account ' + main.email + ' is signed in but is not allowed to edit CRM data (not matched to a CRM user).');
+    return crm;
+  }
+  async function crmFetch(pathname, opts = {}, retry = true) {
+    const s = await crmSession();
+    const r = await fetch(c().crmUrl + '/rest/v1/' + pathname, { ...opts, signal: AbortSignal.timeout(20000),
+      headers: { apikey: c().crmAnonKey, Authorization: 'Bearer ' + s.token, 'Content-Type': 'application/json', Prefer: 'return=representation', ...(opts.headers || {}) } });
+    if (r.status === 401 && retry) { crm = null; main = null; return crmFetch(pathname, opts, false); }
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error('CRM ' + pathname.split('?')[0] + ' ' + (j && (j.message || j.error) || ('HTTP ' + r.status)));
+    return j;
+  }
+
+  async function readDelivery(orderNo) {
+    const rows = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(orderNo) + '&select=order_number,scheduled_date,delivery_date,pick_status,picked_at,picked_up_at,driver');
+    return rows && rows[0] ? rows[0] : null;
+  }
+  // Returns {ok, status, message}. Never throws: callers log the outcome.
+  async function markPicked(orderNo, why) {
+    const no = String(orderNo).replace(/\D/g, '');
+    try {
+      if (!c().enabled) return record(no, { ok: false, status: 'disabled', message: 'ERP link is turned off' });
+      if (!configured()) return record(no, { ok: false, status: 'unconfigured', message: 'No ERP login saved' });
+      const row = await readDelivery(no);
+      if (!row) return record(no, { ok: false, status: 'not_scheduled', message: 'ORD-' + no + ' is not on the ERP deliveries calendar, so there is nothing to mark' });
+      if (row.pick_status === 'picked' || row.pick_status === 'picked_up') return record(no, { ok: true, status: 'already', message: 'ORD-' + no + ' was already ' + row.pick_status.replace('_', ' ') + ' in the ERP' });
+      const now = new Date().toISOString();
+      const s = await crmSession();
+      const upd = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(no), { method: 'PATCH',
+        body: JSON.stringify({ pick_status: 'picked', picked_at: now, picked_up_at: null, updated_by: s.email, updated_at: now }) });
+      if (!upd || !upd.length) return record(no, { ok: false, status: 'no_row', message: 'The ERP did not accept the update for ORD-' + no });
+      marked.set(no, now);
+      return record(no, { ok: true, status: 'marked', message: 'ORD-' + no + ' marked Picked in the ERP (' + why + ')' });
+    } catch (e) { return record(no, { ok: false, status: 'error', message: e.message }); }
+  }
+  function record(no, r) {
+    last = { at: new Date().toISOString(), orderNo: no, ...r };
+    log('ERP: ' + r.message);
+    try { appendEvents([{ ts: Date.now(), picker: 'bridge', orderNo: no, customer: '', event: r.ok ? 'erp_marked' : 'erp_failed', product: '', lot: '', before: 0, after: 0, target: 0, detail: r.message }]); } catch (e) {}
+    return r;
+  }
+  async function test() {
+    if (!configured()) throw httpError(400, 'Enter the ERP email and password first.');
+    main = null; crm = null;
+    const s = await crmSession();
+    return { ok: true, email: main.email, crmEmail: s.email, canWrite: s.matched };
+  }
+  function status() {
+    return { enabled: !!c().enabled, configured: configured(), email: c().email || '', markOn: c().markOn, signedIn: !!(main && Date.now() < main.exp), crmEmail: crm ? crm.email : null, canWrite: crm ? crm.matched : null, last };
+  }
+  function reset() { main = null; crm = null; }
+  return { markPicked, readDelivery, test, status, reset, configured };
+})();
+
 // ---------------------------------------------------------------- self-update from GitHub
 // The code lives in a GitHub repo (config "updates.repo", e.g. "oleumlabs/pickcheck"). "Update now" downloads the latest
 // commit, checks the new server files load, backs up the current files, swaps them in and restarts. config.json, data/
@@ -542,7 +640,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         ok: true, bridge: 'pickcheck', loggedIn: !!token && tokenExp > Date.now(),
         sessionUntil: token ? new Date(tokenExp).toISOString() : null, user: cfg.cultiveraUsername, lastError, keyRequired: !!cfg.accessKey, pickerName: cfg.pickerName,
-        locations: locations ? locations.status() : null, version: currentVersion(), startedAt: STARTED_AT,
+        locations: locations ? locations.status() : null, version: currentVersion(), startedAt: STARTED_AT, erp: erp.status(),
       });
     }
     if (p.startsWith('/api/')) {
@@ -552,7 +650,29 @@ const server = http.createServer(async (req, res) => {
         const body = await readBody(req);
         const events = sanitizeEvents(body.events);
         if (events.length) { appendEvents(events); lastEventAt = Date.now(); }
-        return send(res, 200, { ok: true, stored: events.length });
+        send(res, 200, { ok: true, stored: events.length });
+        // After answering the gun: mark completed orders as Picked in the ERP (once per order).
+        if (cfg.erp.enabled) {
+          const trigger = cfg.erp.markOn === 'verified' ? /^order_verified$/ : /^(order_complete|order_verified)$/;
+          const nos = [...new Set(events.filter(e => trigger.test(e.event) && e.orderNo).map(e => String(e.orderNo)))];
+          for (const no of nos) erp.markPicked(no, 'gun completed the order').catch(() => {});
+        }
+        return;
+      }
+      if (p === '/api/erp/status') return send(res, 200, erp.status());
+      if (req.method === 'POST' && p === '/api/erp/test') return send(res, 200, await erp.test());
+      if (req.method === 'POST' && (m = p.match(/^\/api\/erp\/mark\/(\d+)$/))) return send(res, 200, await erp.markPicked(m[1], 'marked from the reports page'));
+      if ((m = p.match(/^\/api\/erp\/delivery\/(\d+)$/))) { const row = await erp.readDelivery(m[1]); return send(res, 200, { delivery: row }); }
+      if (req.method === 'POST' && p === '/api/settings/erp') {
+        const body = await readBody(req);
+        const patch = { erp: {} };
+        if (typeof body.email === 'string') patch.erp.email = body.email.trim();
+        if (typeof body.password === 'string' && body.password) patch.erp.password = body.password;
+        if (typeof body.enabled === 'boolean') patch.erp.enabled = body.enabled;
+        if (body.markOn === 'complete' || body.markOn === 'verified') patch.erp.markOn = body.markOn;
+        saveConfigPatch(patch); Object.assign(cfg.erp, patch.erp); erp.reset();
+        log('ERP settings saved (' + (cfg.erp.enabled ? 'enabled' : 'disabled') + ', ' + (cfg.erp.email || 'no email') + ')');
+        return send(res, 200, erp.status());
       }
       if (p === '/api/picks' || p === '/api/picks.csv') {
         const { from, to } = dateRange(url);

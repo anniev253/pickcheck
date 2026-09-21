@@ -161,6 +161,25 @@ serving PC is the pick history in `bridge\data\`; download it now and then from 
 For a setup that does not depend on any office PC at all, the bridge can run on a small cloud
 server (about $5/month) with exactly the same files; the gun would not notice the difference.
 
+## ERP link: mark orders Picked on the deliveries page
+
+When the gun completes an order (every unit scanned, or Finish & verify, per the setting), the
+bridge marks that order **Picked** on production.oleumlabs.com → Sales → Deliveries, exactly as the
+page's own "Mark picked" button does: `crm_deliveries.pick_status = 'picked'`, `picked_at = now`,
+`updated_by = <ERP account>`. Only orders already on that calendar are touched; others are logged as
+skipped. Orders already Picked / Picked up are left alone.
+
+Set it up on the reports page → **ERP link → Settings**: enter an ERP email + password (an account
+that is allowed to edit deliveries), tick Enabled, Save, then **Test connection**. The login is
+stored in `config.json` under `erp` on the bridge PC; nothing is typed on that PC. The same panel
+can check an order's ERP status or mark one by hand. Each attempt is recorded in the event log as
+`erp_marked` / `erp_failed`.
+
+How it authenticates: Supabase password sign-in to the ERP project, then the ERP's
+`crm-read-session` function issues a CRM-project token (the deliveries table lives in the CRM
+project); the update is a PostgREST PATCH with that token. Project URLs and anon keys are the public
+ones embedded in the ERP site; they are defaults under `erp` in config and can be overridden.
+
 ## Updating the bridge from GitHub
 
 The code lives in a GitHub repository. The bridge can fetch the latest version itself, so changes
