@@ -122,8 +122,9 @@ function buildIndex(tables, cfg) {
       if (!loc) continue;
       const name = nameI >= 0 ? norm(r[nameI]) : '';
       const type = typeI >= 0 ? normType(r[typeI]) : normType(sheet);   // no type column: the sheet name is the product family
-      const last = last4I >= 0 ? String(r[last4I] || '').replace(/\D/g, '') : '';
-      if (last.length >= 4) byLast.set(last, loc);
+      let last = last4I >= 0 ? String(r[last4I] || '').replace(/\D/g, '') : '';
+      if (last.length > 0 && last.length < 4) last = last.padStart(4, '0');   // Excel drops leading zeros from "0367"
+      if (last.length >= 4) { if (!byLast.has(last)) byLast.set(last, []); byLast.get(last).push({ loc, name, type, sheet }); }
       if (name) entries.push({ name, type, loc, sheet, sheetType: normType(sheet) });
       n++;
     }
@@ -235,17 +236,25 @@ function create(cfg, log) {
   //   3. nothing matched: the product line itself ("Liquid Diamond", "Live Resin Cartridge") so the picker knows the section
   function lookup(line) {
     if (!index) return null;
+    const pname = ' ' + norm(line.name) + ' ', strain = norm(line.strain), ltype = norm(line.type);
+    // Does a sheet row's item name belong to this product? (exact strain, phrase in the product name, or a truncated sheet name)
+    const rowNameFits = e => !e.name || (strain && e.name === strain) || pname.includes(' ' + e.name + ' ') || (e.name.length >= 6 && (strain.startsWith(e.name) || pname.includes(' ' + e.name)));
     const lots = {};
     for (const a of line.allocs || []) {
       for (const bc of a.barcodes) {
         const d = String(bc || '').replace(/\D/g, '');
         if (!d) continue;
-        let hit = index.byLast.get(d);
-        for (let n = Math.min(8, d.length); !hit && n >= 4; n--) hit = index.byLast.get(d.slice(-n));
+        let hit = null;
+        for (let n = d.length; !hit && n >= 4; n = n > 8 ? 8 : n - 1) {   // full barcode first, then the last 8..4 digits
+          const rows = index.byLast.get(d.slice(-n)); if (!rows) continue;
+          // A full barcode is proof on its own. A short key (only the ending digits on the sheet) could belong to another
+          // lot, so it counts only when the row's item name also fits this product.
+          const ok = n >= 12 ? rows : rows.filter(rowNameFits);
+          if (ok.length) hit = ok[0].loc;
+        }
         if (hit) { lots[a.barcodes[0]] = hit; break; }
       }
     }
-    const pname = ' ' + norm(line.name) + ' ', strain = norm(line.strain), ltype = norm(line.type);
     const restricted = !!line.sample || overstockOnly.some(t => pname.includes(' ' + t + ' '));
     let slot = null, slotScore = 0, over = null, overScore = 0;
     const wordsIn = t => !t || t.split(' ').every(w => pname.includes(' ' + w + ' '));
