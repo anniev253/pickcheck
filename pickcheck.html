@@ -55,6 +55,7 @@
   .pill.err{background:var(--err-bg);color:var(--err)}
   .toolbar{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
   .errbox{background:var(--err-bg);border:1px solid var(--err-line);color:#991b1b;border-radius:10px;padding:12px 14px;display:none}
+  .syncwarn{position:fixed;top:var(--bar);left:0;right:0;z-index:29;background:var(--warn-bg);border-bottom:2px solid var(--warn-line);color:#7c2d12;padding:8px 14px;font-size:13px;display:none}
   .pagetitle{margin:4px 0 16px}
   .pagetitle h2{font-size:24px}
   .pagetitle .sub{color:var(--text-2);font-size:14px;margin-top:2px}
@@ -217,6 +218,8 @@
   <button onclick="App.setPicker()" title="Change picker">✎</button>
   <button onclick="App.signOut()" id="signOutBtn">Sign out</button>
 </div>
+
+<div class="syncwarn" id="syncWarn"></div>
 
 <!-- ============ HOME ============ -->
 <section class="screen" id="scr-home">
@@ -441,7 +444,7 @@ const App = (() => {
   }
 
   /* ---------- pick event log (sent to the bridge, queued if offline) ---------- */
-  let flushing = false;
+  let flushing = false, lastFlushOk = Date.now(), flushProblem = '';
   function logEvent(event, data = {}) {
     state.queue.push(Object.assign({ ts: Date.now(), picker: state.picker, event,
       orderNo: order ? order.orderNo : '', customer: order ? order.customer : '' }, data));
@@ -449,18 +452,35 @@ const App = (() => {
     save(); flush();
   }
   async function flush() {
-    if (flushing || !state.queue.length) return;
+    if (flushing || !state.queue.length) { if (!state.queue.length) { lastFlushOk = Date.now(); flushProblem = ''; renderSync(); } return; }
     flushing = true;
     const batch = state.queue.slice(0, 200);
     try {
       const r = await fetch('/api/events', { method: 'POST', keepalive: true, credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ events: batch }) });
-      if (r.ok) { state.queue.splice(0, batch.length); save(); }
-    } catch (e) { /* offline: keep the queue, retry later */ }
-    finally { flushing = false; if (state.queue.length >= 200) flush(); }
+      if (r.ok) { state.queue.splice(0, batch.length); save(); lastFlushOk = Date.now(); flushProblem = ''; }
+      else if (r.status === 401) { flushProblem = 'signed out'; }
+      else { const j = await r.json().catch(() => ({})); flushProblem = j.error || ('server ' + r.status); if (r.status === 400) { state.queue.splice(0, batch.length); save(); } }   // a bad batch must not block the rest
+    } catch (e) { flushProblem = 'no connection'; }
+    finally { flushing = false; renderSync(); if (state.queue.length >= 200 && !flushProblem) flush(); }
   }
   setInterval(flush, 5000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flush(); });
+  window.addEventListener('online', flush);
+
+  // Unsent-scan indicator: the log normally leaves the gun within seconds; if it has been stuck for a minute, say so.
+  function renderSync() {
+    const n = state.queue.length, stuck = n > 0 && Date.now() - lastFlushOk > 60000;
+    const el = $('syncWarn'); if (!el) return;
+    if (!stuck) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.innerHTML = '<b>' + n + ' scan' + (n === 1 ? '' : 's') + ' not sent to the office yet</b> — ' +
+      (flushProblem === 'signed out' ? 'the gun is signed out. Tap Home and sign in again; they send automatically.'
+       : flushProblem === 'no connection' ? 'no connection to the server. Check the Wi-Fi; they send automatically when it is back.'
+       : 'server problem: ' + esc(flushProblem) + '. They keep retrying.') +
+      ' Picking can continue; nothing is lost.';
+  }
+  setInterval(renderSync, 10000);
 
   function setPicker() {
     const n = prompt('Picker name:', state.picker || '');
