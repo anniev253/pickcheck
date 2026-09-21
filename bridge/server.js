@@ -31,7 +31,10 @@ function loadConfig() {
   catch (e) { fail('config.json is not valid JSON: ' + e.message); }
   if (!c.cultiveraUsername || !c.cultiveraPassword) fail('config.json needs "cultiveraUsername" and "cultiveraPassword".');
   const out = Object.assign({ port: 8080, apiBase: 'https://api-wa.cultiverapro.com/api', accessKey: '', appPassword: '', cacheSeconds: 20, pickerName: 'Picker' }, c);
-  out.updates = Object.assign({ repo: '', branch: 'main', token: '', autoHour: null }, c.updates || {});
+  // updates.auto: "idle" (default) installs a pending update within ~10 min of a push once the gun has been idle 15 min;
+  //               "hour" installs only at updates.autoHour; "manual" only via the reports page.
+  out.updates = Object.assign({ repo: '', branch: 'main', token: '', autoHour: null, auto: 'idle', idleMinutes: 15 }, c.updates || {});
+  if (out.updates.autoHour != null && !(c.updates && c.updates.auto)) out.updates.auto = 'hour';
   return out;
 }
 function fail(msg) { console.error('\n' + msg + '\n'); process.exit(1); }
@@ -443,7 +446,7 @@ async function updateStatus() {
   const current = currentVersion();
   if (!cfg.updates.repo) return { configured: false, current };
   const latest = await latestCommit();
-  return { configured: true, repo: cfg.updates.repo, branch: cfg.updates.branch || 'main', current, latest, updateAvailable: latest.sha !== current.sha, autoHour: cfg.updates.autoHour };
+  return { configured: true, repo: cfg.updates.repo, branch: cfg.updates.branch || 'main', current, latest, updateAvailable: latest.sha !== current.sha, autoHour: cfg.updates.autoHour, auto: cfg.updates.auto, idleMinutes: cfg.updates.idleMinutes, idleFor: Math.round((Date.now() - Math.max(lastEventAt, Date.parse(STARTED_AT))) / 60000) };
 }
 
 let updating = false;
@@ -616,17 +619,20 @@ server.listen(cfg.port, '::', async () => {
   const warmLots = () => openOrders().then(list => Promise.all(list.filter(o => o.ready).map(o => rawPickList(o.id).catch(() => null)))).then(() => log('Lot index ready (' + openCache.list.length + ' open orders)')).catch(e => log('Lot index: ' + e.message));
   setTimeout(warmLots, 3000);
   setInterval(warmLots, 4 * 60 * 1000);
-  // Optional unattended updates: at updates.autoHour (0-23), apply a pending update if the gun has been idle for 15 minutes.
+  // Unattended updates. "idle": check GitHub every 10 minutes and install a pending update once the gun has been idle
+  // for updates.idleMinutes. "hour": only during updates.autoHour. "manual": never (reports page only).
   if (cfg.updates.repo) {
-    log('Updates: ' + cfg.updates.repo + ' (' + (cfg.updates.branch || 'main') + '), running version ' + (shortSha(currentVersion().sha) || 'unrecorded') + (cfg.updates.autoHour == null ? ', manual only' : ', automatic at ' + cfg.updates.autoHour + ':00'));
-    setInterval(async () => {
+    const u = cfg.updates;
+    const mode = u.auto === 'manual' ? 'manual only (reports page)' : u.auto === 'hour' ? 'automatic at ' + u.autoHour + ':00' : 'automatic within ~10 min of a push, once the gun is idle ' + u.idleMinutes + ' min';
+    log('Updates: ' + u.repo + ' (' + (u.branch || 'main') + '), running version ' + (shortSha(currentVersion().sha) || 'unrecorded') + ', ' + mode);
+    if (u.auto !== 'manual') setInterval(async () => {
       try {
-        if (cfg.updates.autoHour == null || new Date().getHours() !== cfg.updates.autoHour) return;
-        if (Date.now() - lastEventAt < 15 * 60 * 1000) return;
+        if (u.auto === 'hour' && new Date().getHours() !== u.autoHour) return;
+        if (Date.now() - Math.max(lastEventAt, Date.parse(STARTED_AT)) < u.idleMinutes * 60 * 1000) return;   // gun busy, or just restarted
         const s = await updateStatus();
-        if (s.updateAvailable) { await applyUpdate('scheduled'); restartSoon(); }
-      } catch (e) { log('Scheduled update: ' + e.message); }
-    }, 20 * 60 * 1000);
+        if (s.updateAvailable) { await applyUpdate('automatic'); restartSoon(); }
+      } catch (e) { log('Automatic update: ' + e.message); }
+    }, 10 * 60 * 1000);
   }
   // Keep the session warm so the first scan of the morning is instant. After a network blip, retry every 2 minutes
   // until Cultivera is reachable again; otherwise check every 30 minutes.

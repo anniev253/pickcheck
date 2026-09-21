@@ -8,3 +8,4 @@ bridge/HANDOFF.md
 bridge/ngrok.yml
 *.zip
 Thumbs.db
+.claude/

@@ -166,17 +166,21 @@ server (about $5/month) with exactly the same files; the gun would not notice th
 The code lives in a GitHub repository. The bridge can fetch the latest version itself, so changes
 made on the laptop never have to be copied to the warehouse PC by hand.
 
-- `config.json` → `"updates": { "repo": "owner/pickcheck", "branch": "main", "token": "...", "autoHour": null }`.
+- `config.json` → `"updates": { "repo": "owner/pickcheck", "branch": "main", "token": "..." }`.
   `token` is a fine-grained GitHub token with **Contents: read** on that repository (needed only
-  if the repository is private). `autoHour` (0-23) installs pending updates unattended at that hour,
-  provided the gun has been idle for 15 minutes; leave `null` for manual only.
+  if the repository is private).
+- **Automatic by default.** The bridge checks GitHub every 10 minutes and installs a pending
+  update once the gun has been idle for 15 minutes (`"idleMinutes"` to change). Alternatives:
+  `"auto": "hour", "autoHour": 3` installs only at that hour; `"auto": "manual"` only via the
+  reports page. Either way the reports page still shows the version and offers Update now / Roll back.
 - Reports page → **Bridge software** panel shows the running version and whether an update is
   available. **Update now** downloads the latest commit, verifies the new server files load, saves
   the current files under `bridge\backup\previous`, swaps the files in and restarts (about 10
   seconds; picking progress on the gun is kept). **Roll back** restores the saved files.
 - Only app code is replaced (`pickcheck.html`, `bridge\*.js`, `*.html`, `*.cmd`, `static\`).
   `config.json`, `data\` and `logs\` are never touched. `bridge\VERSION` records what is installed.
-- Workflow from the laptop: edit → `git commit` → `git push`. Then on the reports page: Update now.
+- Workflow from the laptop: edit → `git commit` → `git push`. The warehouse installs it by itself
+  at the next idle moment; Update now on the reports page only if you want it sooner.
 
 ## Pick tracking and reports
 

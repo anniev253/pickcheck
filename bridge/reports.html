@@ -145,9 +145,10 @@
       if (!s.configured) { $('updText').textContent = 'Running ' + (cur.sha ? cur.sha.slice(0, 7) : 'a hand-installed version') + '. No update source configured.'; return; }
       const curTxt = cur.sha ? cur.sha.slice(0, 7) + ' (' + fmtWhen(cur.at) + ')' : 'hand-installed version';
       if (s.updateAvailable) {
-        $('updText').innerHTML = 'Running <b>' + esc(curTxt) + '</b>. <b>Update available:</b> ' + esc(s.latest.sha.slice(0, 7)) + ' — ' + esc(s.latest.message) + ' (' + fmtWhen(s.latest.at) + ').' + (s.autoHour != null ? ' Installs automatically at ' + s.autoHour + ':00 if not done sooner.' : '');
+        const autoTxt = s.auto === 'hour' ? ' Installs automatically at ' + s.autoHour + ':00 if not done sooner.' : s.auto === 'manual' ? '' : ' Installs automatically within about 10 minutes once the gun has been idle ' + s.idleMinutes + ' min (idle ' + s.idleFor + ' min now).';
+        $('updText').innerHTML = 'Running <b>' + esc(curTxt) + '</b>. <b>Update available:</b> ' + esc(s.latest.sha.slice(0, 7)) + ' — ' + esc(s.latest.message) + ' (' + fmtWhen(s.latest.at) + ').' + autoTxt;
         $('updBtn').style.display = '';
-      } else { $('updText').textContent = 'Up to date: ' + curTxt + '.'; $('updBtn').style.display = 'none'; }
+      } else { $('updText').textContent = 'Up to date: ' + curTxt + '.' + (s.auto === 'manual' ? '' : ' New versions install themselves.'); $('updBtn').style.display = 'none'; }
       $('rbBtn').style.display = cur.sha ? '' : 'none'; $('rbBtn').className = 'range-btn secondary';
     } catch (e) { $('updText').textContent = 'Could not check for updates: ' + e.message; }
   }
