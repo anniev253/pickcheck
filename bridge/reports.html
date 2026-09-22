@@ -73,8 +73,10 @@
         <input id="erpOrder" inputmode="numeric" placeholder="Order # (e.g. 15742)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;width:170px">
         <button class="range-btn secondary" id="erpCheck">Check in ERP</button>
         <button class="range-btn secondary" id="erpMark">Mark picked now</button>
+        <button class="range-btn secondary" id="erpRecent">Show recent deliveries</button>
         <span class="muted" id="erpResult" style="font-size:13px"></span>
       </div>
+      <div class="tablewrap" id="erpRecentWrap" style="display:none;margin-top:10px"><table id="erpRecentTable"></table></div>
     </div>
   </div>
   <div class="range">
@@ -235,6 +237,17 @@
     $('erpResult').textContent = 'Marking…';
     try { const r = await post('/api/erp/mark/' + no); $('erpResult').textContent = r.message; await erpStatus(); }
     catch (e) { $('erpResult').textContent = 'Failed: ' + e.message; }
+  };
+  $('erpRecent').onclick = async () => {
+    $('erpResult').textContent = 'Reading the ERP calendar…';
+    try {
+      const r = await fetch('/api/erp/recent', { credentials: 'same-origin' }).then(r => r.json()); if (r.error) throw new Error(r.error);
+      const rows = r.rows || [];
+      $('erpRecentTable').innerHTML = rows.length
+        ? '<tr><th>Order</th><th>Scheduled</th><th>Delivery</th><th>Driver</th><th>Pick status</th><th>Picked at</th><th>Updated by</th></tr>' + rows.map(d => '<tr><td>ORD-' + esc(d.order_number) + '</td><td>' + esc(d.scheduled_date || '') + '</td><td>' + esc(d.delivery_date || '') + '</td><td>' + esc(d.driver || '') + '</td><td>' + esc(d.pick_status || 'none') + '</td><td>' + (d.picked_at ? fmtWhen(d.picked_at) : '') + '</td><td>' + esc(d.updated_by || '') + '</td></tr>').join('')
+        : '<tr><td class="empty">The ERP returned no deliveries at all for this account.</td></tr>';
+      $('erpRecentWrap').style.display = ''; $('erpResult').textContent = rows.length + ' most recent deliveries on the ERP calendar.';
+    } catch (e) { $('erpResult').textContent = 'Could not read the ERP calendar: ' + e.message; }
   };
   erpStatus();
 })();

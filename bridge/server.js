@@ -476,6 +476,11 @@ const erp = (() => {
     const rows = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(orderNo) + '&select=order_number,scheduled_date,delivery_date,pick_status,picked_at,picked_up_at,driver');
     return rows && rows[0] ? rows[0] : null;
   }
+  // The most recently scheduled deliveries on the ERP calendar (diagnostic: shows what the calendar holds and that reads work).
+  async function readRecent(limit = 12) {
+    const rows = await crmFetch('crm_deliveries?select=order_number,scheduled_date,delivery_date,pick_status,picked_at,driver,updated_by&order=scheduled_date.desc.nullslast,updated_at.desc&limit=' + limit);
+    return { rows: rows || [], total: null };
+  }
   // Returns {ok, status, message}. Never throws: callers log the outcome.
   async function markPicked(orderNo, why) {
     const no = String(orderNo).replace(/\D/g, '');
@@ -510,7 +515,7 @@ const erp = (() => {
     return { enabled: !!c().enabled, configured: configured(), email: c().email || '', markOn: c().markOn, signedIn: !!(main && Date.now() < main.exp), crmEmail: crm ? crm.email : null, canWrite: crm ? crm.matched : null, last };
   }
   function reset() { main = null; crm = null; }
-  return { markPicked, readDelivery, test, status, reset, configured };
+  return { markPicked, readDelivery, readRecent, test, status, reset, configured };
 })();
 
 // ---------------------------------------------------------------- self-update from GitHub
@@ -663,6 +668,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST' && p === '/api/erp/test') return send(res, 200, await erp.test());
       if (req.method === 'POST' && (m = p.match(/^\/api\/erp\/mark\/(\d+)$/))) return send(res, 200, await erp.markPicked(m[1], 'marked from the reports page'));
       if ((m = p.match(/^\/api\/erp\/delivery\/(\d+)$/))) { const row = await erp.readDelivery(m[1]); return send(res, 200, { delivery: row }); }
+      if (p === '/api/erp/recent') return send(res, 200, await erp.readRecent());
       if (req.method === 'POST' && p === '/api/settings/erp') {
         const body = await readBody(req);
         const patch = { erp: {} };
