@@ -161,6 +161,13 @@ serving PC is the pick history in `bridge\data\`; download it now and then from 
 For a setup that does not depend on any office PC at all, the bridge can run on a small cloud
 server (about $5/month) with exactly the same files; the gun would not notice the difference.
 
+## Pages
+
+- `/` the pick app (gun, phone)
+- `/reports` pick numbers, orders, shortages reported from the gun, event log
+- `/admin` bridge software (version, update, roll back), shortage email settings, ERP link
+- `/picklist/<orderNo>` printable pick list with QR code and locations
+
 ## Shortages: what the picker does, what the office gets
 
 1. The picker scans what can be found, taps the line → **Mark line short (can't find the rest)** →
@@ -170,7 +177,8 @@ server (about $5/month) with exactly the same files; the gun would not notice th
    reported from the gun** until withdrawn.
 3. The picker finishes the order as usual. **Finish** with only short lines gives "Complete with N
    short lines" (the order is done on the gun) and, if the ERP link is on, the order is marked
-   Picked in the ERP with a `SHORT (gun): …` note. A second email summarises the finished order.
+   Picked in the ERP with a `SHORT (gun): …` note. No second email; the finish shows in the
+   event log on the reports page.
 4. The office adjusts the quantity in Cultivera. If the picker still has the order open,
    **Refresh from Cultivera** pulls the new quantity and the line shows complete.
 

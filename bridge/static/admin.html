@@ -1,0 +1,229 @@
+<title>Oleum Orders · Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Nunito+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --navy:#223549; --gold:#c0a341; --gold-400:#d4b84e; --gold-600:#a08a30;
+    --ground:#f0f2f5; --surface:#fff; --surface-2:#f8fafc; --surface-3:#e8ecf0; --line:#dbe3ec;
+    --text:#1a1d21; --text-2:#64748b; --muted:#94a3b8;
+    --go:#16a34a; --go-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7; --err:#dc2626; --err-bg:#fee2e2;
+    --sans:"Nunito Sans",Inter,system-ui,-apple-system,sans-serif; --head:"Nunito","Nunito Sans",system-ui,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .appbar{height:52px;background:var(--navy);color:#fff;display:flex;align-items:center;gap:12px;padding:0 20px}
+  .appbar img{height:22px;width:auto;display:block}
+  .appbar .eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-400);font-weight:700;margin-top:2px}
+  .appbar a{margin-left:auto;color:#cbd5e1;text-decoration:none;font-size:13px;font-weight:600}
+  .appbar a:hover{color:#fff}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px 20px 60px}
+  h1,h2{font-family:var(--head);font-weight:800;letter-spacing:-.01em;margin:0;color:var(--navy)}
+  h1{font-size:24px}
+  h2{font-size:17px;margin:26px 0 10px}
+  .range{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  .range button,.range a{font-family:var(--sans);font-size:13px;font-weight:700;padding:8px 14px;border-radius:8px;background:var(--surface);color:var(--navy);border:1px solid var(--line);cursor:pointer;text-decoration:none}
+  .range button.on{background:var(--gold);color:#fff;border-color:var(--gold)}
+  .range input{font-family:var(--sans);font-size:13px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+  .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
+  .tot{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  .tot .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2)}
+  .tot .v{font-family:var(--head);font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px;color:var(--navy)}
+  .tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2);background:var(--surface-2)}
+  td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:none}
+  .pill{font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px;background:var(--surface-3);color:var(--text-2)}
+  .pill.ok{background:var(--go-bg);color:var(--go)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.err{background:var(--err-bg);color:var(--err)}
+  .empty{color:var(--muted);padding:18px;text-align:center}
+  .muted{color:var(--text-2)}
+  .ev-scan_ok{color:var(--go);font-weight:700} .ev-scan_rejected{color:var(--err);font-weight:700} .ev-order_verified,.ev-order_complete,.ev-erp_marked{color:var(--gold-600);font-weight:700} .ev-erp_failed{color:var(--err);font-weight:700} .ev-order_issues,.ev-line_short,.ev-order_short{color:var(--warn);font-weight:700} .ev-email_sent{color:var(--gold-600)} .ev-email_failed{color:var(--err);font-weight:700}
+  .notice{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:16px}
+  .range-btn{font-family:var(--sans);font-size:13px;font-weight:700;padding:8px 14px;border-radius:8px;background:var(--gold);color:#fff;border:1px solid var(--gold);cursor:pointer}
+  .range-btn.secondary{background:var(--surface);color:var(--navy);border-color:var(--line)}
+  .range-btn:disabled{opacity:.5;cursor:default}
+</style>
+<style>
+  .appbar nav{margin-left:auto;display:flex;gap:16px}
+  .appbar nav a{margin-left:0}
+  .appbar nav a.on{color:#fff;border-bottom:2px solid var(--gold-400);padding-bottom:2px}
+  .lead{color:var(--text-2);margin:4px 0 0}
+</style>
+
+<div class="appbar"><img src="/static/oleum-wordmark-white.png" alt="Oleum"><span class="eyebrow">Orders · Admin</span><nav><a href="/reports">Reports</a><a href="/admin" class="on">Admin</a><a href="/">Pick app</a></nav></div>
+<div class="wrap">
+  <h1>Admin</h1>
+  <p class="lead">Bridge software, shortage emails and the ERP link. Pick numbers live on the <a href="/reports">Reports</a> page.</p>
+  <div class="notice" id="updBox" style="margin:14px 0 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px"><div style="font-weight:700">Bridge software</div><div class="muted" id="updText">Checking version…</div></div>
+    <button id="updBtn" class="range-btn" style="display:none">Update now</button>
+    <button id="rbBtn" class="range-btn" style="display:none">Roll back</button>
+  </div>
+  <div class="notice" id="mailBox" style="margin:10px 0 0">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px"><div style="font-weight:700">Shortage emails</div><div class="muted" id="mailText">Checking…</div></div>
+      <button class="range-btn secondary" id="mailToggle">Settings</button>
+    </div>
+    <div id="mailForm" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="muted" style="margin-bottom:8px">When the picker marks a line short, the bridge emails the details (order, product, lot, found/ordered) and a link to the Cultivera order. It sends from a mailbox you provide. Easiest: a Gmail address with an <b>app password</b> (Google Account → Security → 2-Step Verification → App passwords); server smtp.gmail.com, port 465.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="mailHost" placeholder="SMTP server (smtp.gmail.com)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:200px">
+        <input id="mailPort" placeholder="Port (465)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;width:100px">
+        <input id="mailUser" placeholder="Sending email (login)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+        <input id="mailPw" type="password" placeholder="Password / app password (blank = keep)" autocomplete="new-password" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:240px">
+        <input id="mailTo" placeholder="Send to (comma-separated)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:240px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="mailEnabled"> Enabled</label>
+        <button class="range-btn" id="mailSave">Save</button>
+        <button class="range-btn secondary" id="mailTest">Send test email</button>
+        <span class="muted" id="mailResult" style="font-size:13px"></span>
+      </div>
+    </div>
+  </div>
+  <div class="notice" id="erpBox" style="margin:10px 0 0">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px"><div style="font-weight:700">ERP link</div><div class="muted" id="erpText">Checking…</div></div>
+      <button class="range-btn secondary" id="erpToggle">Settings</button>
+    </div>
+    <div id="erpForm" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="muted" style="margin-bottom:8px">When the gun completes an order, the bridge marks it <b>Picked</b> on production.oleumlabs.com → Sales → Deliveries (only orders already on that calendar). It signs in to the ERP with this account; use one that is allowed to edit deliveries.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="erpEmail" type="email" placeholder="ERP email" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+        <input id="erpPw" type="password" placeholder="ERP password (leave blank to keep)" autocomplete="new-password" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="erpEnabled"> Enabled</label>
+        <select id="erpMarkOn" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px"><option value="complete">Mark when every unit is scanned</option><option value="verified">Mark only when Finish & verify passes</option></select>
+        <button class="range-btn" id="erpSave">Save</button>
+        <button class="range-btn secondary" id="erpTest">Test connection</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <input id="erpOrder" inputmode="numeric" placeholder="Order # (e.g. 15742)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;width:170px">
+        <button class="range-btn secondary" id="erpCheck">Check in ERP</button>
+        <button class="range-btn secondary" id="erpMark">Mark picked now</button>
+        <button class="range-btn secondary" id="erpRecent">Show recent deliveries</button>
+        <span class="muted" id="erpResult" style="font-size:13px"></span>
+      </div>
+      <div class="tablewrap" id="erpRecentWrap" style="display:none;margin-top:10px"><table id="erpRecentTable"></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+  fetch("/api/me", { credentials: "same-origin" }).then(r => { if (r.status === 401) document.querySelector(".wrap").insertAdjacentHTML("afterbegin", "<div class=\"notice\">Sign in on the <a href=\"/\">pick app</a> first, then come back to this page.</div>"); });
+
+  /* ---- bridge software updates ---- */
+  const fmtWhen = s => s ? new Date(s).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  async function updStatus() {
+    try {
+      const r = await fetch('/api/update/status', { credentials: 'same-origin' }); const s = await r.json();
+      if (!r.ok) throw new Error(s.error || r.status);
+      const cur = s.current || {};
+      if (!s.configured) { $('updText').textContent = 'Running ' + (cur.sha ? cur.sha.slice(0, 7) : 'a hand-installed version') + '. No update source configured.'; return; }
+      const curTxt = cur.sha ? cur.sha.slice(0, 7) + ' (' + fmtWhen(cur.at) + ')' : 'hand-installed version';
+      if (s.updateAvailable) {
+        const autoTxt = s.auto === 'hour' ? ' Installs automatically at ' + s.autoHour + ':00 if not done sooner.' : s.auto === 'manual' ? '' : ' Installs automatically within about 10 minutes once the gun has been idle ' + s.idleMinutes + ' min (idle ' + s.idleFor + ' min now).';
+        $('updText').innerHTML = 'Running <b>' + esc(curTxt) + '</b>. <b>Update available:</b> ' + esc(s.latest.sha.slice(0, 7)) + ' — ' + esc(s.latest.message) + ' (' + fmtWhen(s.latest.at) + ').' + autoTxt;
+        $('updBtn').style.display = '';
+      } else { $('updText').textContent = 'Up to date: ' + curTxt + '.' + (s.auto === 'manual' ? '' : ' New versions install themselves.'); $('updBtn').style.display = 'none'; }
+      $('rbBtn').style.display = cur.sha ? '' : 'none'; $('rbBtn').className = 'range-btn secondary';
+    } catch (e) { $('updText').textContent = 'Could not check for updates: ' + e.message; }
+  }
+  async function waitForRestart(label) {
+    $('updText').textContent = label + ' Restarting the bridge…';
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      try { const h = await fetch('/api/health', { credentials: 'same-origin', cache: 'no-store' }); if (h.ok) { const j = await h.json(); if (j.startedAt && Date.parse(j.startedAt) > Date.now() - 60000) { await updStatus(); $('updText').textContent += ' Restarted OK.'; return; } } } catch (e) {}
+    }
+    $('updText').textContent = 'The bridge did not come back within a minute. On the bridge PC run: nssm restart PickCheck';
+  }
+  $('updBtn').onclick = async () => {
+    if (!confirm('Update the bridge now? Anyone mid-pick will see a short pause (about 10 seconds); their progress is kept.')) return;
+    $('updBtn').disabled = true; $('updText').textContent = 'Downloading and checking the new version…';
+    try { const r = await fetch('/api/update/apply', { method: 'POST', credentials: 'same-origin' }); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); await waitForRestart('Update ' + j.version.sha.slice(0, 7) + ' installed.'); }
+    catch (e) { $('updText').textContent = 'Update failed, nothing was changed: ' + e.message; }
+    finally { $('updBtn').disabled = false; }
+  };
+  $('rbBtn').onclick = async () => {
+    if (!confirm('Roll back to the previous version of the bridge?')) return;
+    $('rbBtn').disabled = true;
+    try { const r = await fetch('/api/update/rollback', { method: 'POST', credentials: 'same-origin' }); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); await waitForRestart('Previous version restored (' + j.restored + ' files).'); }
+    catch (e) { $('updText').textContent = 'Roll back failed: ' + e.message; }
+    finally { $('rbBtn').disabled = false; }
+  };
+  updStatus();
+
+  /* ---- ERP link ---- */
+  const post = (u, body) => fetch(u, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.status); return j; });
+  async function erpStatus() {
+    try {
+      const s = await fetch('/api/erp/status', { credentials: 'same-origin' }).then(r => r.json());
+      if (s.error) throw new Error(s.error);
+      $('erpEmail').value = s.email || ''; $('erpEnabled').checked = !!s.enabled; $('erpMarkOn').value = s.markOn || 'complete';
+      const lastTxt = s.last ? ' Last: ' + fmtWhen(s.last.at) + ' — ' + s.last.message : '';
+      $('erpText').textContent = !s.configured ? 'Not set up. Open Settings and enter an ERP login.'
+        : !s.enabled ? 'Off (login saved as ' + s.email + ').' + lastTxt
+        : 'On: completed orders are marked Picked on the ERP deliveries page as ' + s.email + '.' + lastTxt;
+    } catch (e) { $('erpText').textContent = 'Could not read ERP link status: ' + e.message; }
+  }
+  $('erpToggle').onclick = () => { const f = $('erpForm'); f.style.display = f.style.display === 'none' ? '' : 'none'; };
+  $('erpSave').onclick = async () => {
+    $('erpResult').textContent = 'Saving…';
+    try { await post('/api/settings/erp', { email: $('erpEmail').value, password: $('erpPw').value, enabled: $('erpEnabled').checked, markOn: $('erpMarkOn').value }); $('erpPw').value = ''; $('erpResult').textContent = 'Saved.'; await erpStatus(); }
+    catch (e) { $('erpResult').textContent = 'Save failed: ' + e.message; }
+  };
+  $('erpTest').onclick = async () => {
+    $('erpResult').textContent = 'Signing in to the ERP…';
+    try { const r = await post('/api/erp/test'); $('erpResult').textContent = 'Connected as ' + r.email + (r.canWrite ? ' — allowed to edit deliveries.' : ' — NOT allowed to edit deliveries (account not matched to a CRM user).'); }
+    catch (e) { $('erpResult').textContent = 'Test failed: ' + e.message; }
+  };
+  $('erpCheck').onclick = async () => {
+    const no = $('erpOrder').value.replace(/\D/g, ''); if (!no) return;
+    $('erpResult').textContent = 'Checking…';
+    try { const r = await fetch('/api/erp/delivery/' + no, { credentials: 'same-origin' }).then(r => r.json()); if (r.error) throw new Error(r.error); const d = r.delivery; $('erpResult').textContent = d ? 'ORD-' + no + ' on the ERP calendar: pick status "' + (d.pick_status || 'none') + '"' + (d.picked_at ? ', picked ' + fmtWhen(d.picked_at) : '') + (d.scheduled_date ? ', scheduled ' + d.scheduled_date : '') + (d.driver ? ', driver ' + d.driver : '') : 'ORD-' + no + ' is not on the ERP deliveries calendar.'; }
+    catch (e) { $('erpResult').textContent = 'Check failed: ' + e.message; }
+  };
+  $('erpMark').onclick = async () => {
+    const no = $('erpOrder').value.replace(/\D/g, ''); if (!no) return;
+    if (!confirm('Mark ORD-' + no + ' as Picked on the ERP deliveries page?')) return;
+    $('erpResult').textContent = 'Marking…';
+    try { const r = await post('/api/erp/mark/' + no); $('erpResult').textContent = r.message; await erpStatus(); }
+    catch (e) { $('erpResult').textContent = 'Failed: ' + e.message; }
+  };
+  $('erpRecent').onclick = async () => {
+    $('erpResult').textContent = 'Reading the ERP calendar…';
+    try {
+      const r = await fetch('/api/erp/recent', { credentials: 'same-origin' }).then(r => r.json()); if (r.error) throw new Error(r.error);
+      const rows = r.rows || [];
+      $('erpRecentTable').innerHTML = rows.length
+        ? '<tr><th>Order</th><th>Scheduled</th><th>Delivery</th><th>Driver</th><th>Pick status</th><th>Picked at</th><th>Updated by</th></tr>' + rows.map(d => '<tr><td>' + esc(d.order_number) + '</td><td>' + esc(d.scheduled_date || '') + '</td><td>' + esc(d.delivery_date || '') + '</td><td>' + esc(d.driver || '') + '</td><td>' + esc(d.pick_status || 'none') + '</td><td>' + (d.picked_at ? fmtWhen(d.picked_at) : '') + '</td><td>' + esc(d.updated_by || '') + '</td></tr>').join('')
+        : '<tr><td class="empty">The ERP returned no deliveries at all for this account.</td></tr>';
+      $('erpRecentWrap').style.display = ''; $('erpResult').textContent = rows.length + ' most recent deliveries on the ERP calendar.';
+    } catch (e) { $('erpResult').textContent = 'Could not read the ERP calendar: ' + e.message; }
+  };
+  erpStatus();
+
+  async function mailStatus() {
+    try {
+      const s = await fetch('/api/notify/status', { credentials: 'same-origin' }).then(r => r.json()); if (s.error) throw new Error(s.error);
+      $('mailHost').value = s.host || ''; $('mailPort').value = s.port || 465; $('mailUser').value = s.user || ''; $('mailTo').value = s.to || ''; $('mailEnabled').checked = !!s.enabled;
+      const lastTxt = s.last ? ' Last: ' + fmtWhen(s.last.at) + ' — ' + s.last.message : '';
+      $('mailText').textContent = !s.configured ? 'Not set up. Open Settings to enter a sending mailbox and a recipient.' : !s.enabled ? 'Off (would send to ' + s.to + ').' + lastTxt : 'On: shortages are emailed to ' + s.to + '.' + lastTxt;
+    } catch (e) { $('mailText').textContent = 'Could not read email status: ' + e.message; }
+  }
+  $('mailToggle').onclick = () => { const f = $('mailForm'); f.style.display = f.style.display === 'none' ? '' : 'none'; };
+  $('mailSave').onclick = async () => {
+    $('mailResult').textContent = 'Saving…';
+    try { await post('/api/settings/notify', { host: $('mailHost').value, port: $('mailPort').value, user: $('mailUser').value, password: $('mailPw').value, to: $('mailTo').value, enabled: $('mailEnabled').checked }); $('mailPw').value = ''; $('mailResult').textContent = 'Saved.'; await mailStatus(); }
+    catch (e) { $('mailResult').textContent = 'Save failed: ' + e.message; }
+  };
+  $('mailTest').onclick = async () => {
+    $('mailResult').textContent = 'Sending a test email…';
+    try { const r = await post('/api/notify/test'); $('mailResult').textContent = 'Test email sent to ' + r.to + '. Check the inbox (and spam).'; }
+    catch (e) { $('mailResult').textContent = 'Test failed: ' + e.message; }
+  };
+  mailStatus();
+})();
+</script>

@@ -805,7 +805,7 @@ const App = (() => {
       v.innerHTML = '<h2 style="color:var(--warn)">⚠ ' + probs.length + ' line' + (probs.length > 1 ? 's' : '') + ' off</h2><p class="muted" style="margin:6px 0 0">Lines marked MISSING have not been picked and not been declared short. Pick them, or open the line and mark it short, then Finish again.</p>';
     } else if (shorts.length) {
       logEvent('order_short', { before: picked, after: order.lines.length - shorts.length, target, detail: shortDetail });
-      v.innerHTML = '<h2 style="color:var(--warn)">✓ Complete with ' + shorts.length + ' short line' + (shorts.length > 1 ? 's' : '') + '</h2><p class="muted" style="margin:6px 0 0">' + picked + ' of ' + target + ' units picked. The office has been notified to adjust the order in Cultivera; the order is done on the gun.</p>';
+      v.innerHTML = '<h2 style="color:var(--warn)">✓ Complete with ' + shorts.length + ' short line' + (shorts.length > 1 ? 's' : '') + '</h2><p class="muted" style="margin:6px 0 0">' + picked + ' of ' + target + ' units picked. The office was notified of the shortage when it was marked; the order is done on the gun.</p>';
       order.finished = true;
     } else {
       logEvent('order_verified', { before: picked, after: order.lines.length, target, detail: 'all lots match' });

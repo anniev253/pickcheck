@@ -601,20 +601,13 @@ const notify = (() => {
       '', '— Oleum Orders (Pick Check bridge)'].join('\n');
     const r = await send(subject, text); r.orderNo = no; return r;
   }
-  async function orderShort(e) {
-    const no = String(e.orderNo || '');
-    const subject = 'ORD-' + no + ' finished with shortages — ' + (e.detail || '').slice(0, 80);
-    const text = ['The picker finished the order with one or more lines short.', '', 'Order:   ORD-' + no + (e.customer ? ' (' + e.customer + ')' : ''), 'Picked:  ' + num(e.before) + ' of ' + num(e.target) + ' units', 'Short:   ' + (e.detail || ''), 'Picker:  ' + (e.picker || ''), 'When:    ' + new Date(e.ts).toLocaleString(), '',
-      'Cultivera: ' + cultiveraLink(no), '', '— Oleum Orders (Pick Check bridge)'].join('\n');
-    const r = await send(subject, text); r.orderNo = no; return r;
-  }
   async function test() {
     if (!configured()) throw httpError(400, 'Enter the email server, login, password and recipient first.');
     await smtpSend({ host: c().host, port: c().port, user: c().user, password: c().password, from: c().from || c().user, fromName: 'Oleum Orders', to: c().to, subject: 'Oleum Orders: test email', text: 'This is a test from the Pick Check bridge. Shortage notifications will arrive like this.\n\nSent ' + new Date().toLocaleString() });
     return { ok: true, to: c().to };
   }
   function status() { return { enabled: !!c().enabled, configured: configured(), host: c().host, port: c().port, user: c().user, from: c().from, to: c().to, last }; }
-  return { shortage, orderShort, test, status };
+  return { shortage, test, status };
 })();
 
 // Open shortages from the event log: line_short not withdrawn (line_unshort / line_reset) since, newest first.
@@ -640,7 +633,7 @@ const { readZip } = require('./locations.js');
 const APP_ROOT = path.join(ROOT, '..');
 const VERSION_FILE = path.join(ROOT, 'VERSION');
 const BACKUP_DIR = path.join(ROOT, 'backup');
-const UPDATABLE = /^(pickcheck\.html|bridge\/(server\.js|locations\.js|reports\.html|picklist\.html|README\.md|MOVE-TO-NEW-PC\.md|config\.example\.json|[A-Za-z0-9._-]+\.cmd|static\/[^/]+))$/;   // .cmd covers takeover/standdown too
+const UPDATABLE = /^(pickcheck\.html|bridge\/(server\.js|locations\.js|[A-Za-z0-9._-]+\.html|README\.md|MOVE-TO-NEW-PC\.md|config\.example\.json|[A-Za-z0-9._-]+\.cmd|static\/[^/]+))$/;   // any bridge page, script, static file
 
 function currentVersion() { try { return JSON.parse(fs.readFileSync(VERSION_FILE, 'utf8')); } catch (e) { return { sha: null, at: null, message: 'installed by hand (no version recorded)' }; } }
 const shortSha = s => (s || '').slice(0, 7);
@@ -741,6 +734,7 @@ const server = http.createServer(async (req, res) => {
     const isGet = req.method === 'GET' || req.method === 'HEAD';
     if (isGet && (p === '/' || p === '/pickcheck.html' || p === '/index.html')) return page(res, APP_HTML);
     if (isGet && p === '/reports') return page(res, REPORTS_HTML);
+    if (isGet && p === '/admin') return page(res, path.join(STATIC_DIR, 'admin.html'));   // lives in static/ so the updater ships it
     if (isGet && /^\/picklist\/\d+$/.test(p)) return page(res, path.join(ROOT, 'picklist.html'));
     if (isGet && p.startsWith('/static/')) {
       const file = path.join(STATIC_DIR, path.basename(p));
@@ -771,10 +765,7 @@ const server = http.createServer(async (req, res) => {
         if (events.length) { appendEvents(events); lastEventAt = Date.now(); }
         send(res, 200, { ok: true, stored: events.length });
         // After answering the gun: email shortages to the office, and mark completed orders as Picked in the ERP.
-        for (const e of events) {
-          if (e.event === 'line_short') notify.shortage(e).catch(() => {});
-          if (e.event === 'order_short') notify.orderShort(e).catch(() => {});
-        }
+        for (const e of events) if (e.event === 'line_short') notify.shortage(e).catch(() => {});   // one email per shortage; finishing the order is only logged
         if (cfg.erp.enabled) {
           // "order_short" = Finish pressed with declared shortages: the order is picked as far as it can be, so it counts as verified.
           const trigger = cfg.erp.markOn === 'verified' ? /^(order_verified|order_short)$/ : /^(order_complete|order_verified|order_short)$/;
