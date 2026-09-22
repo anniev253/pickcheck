@@ -43,6 +43,8 @@ function loadConfig() {
     crmUrl: 'https://jbnnajhsedncqtaeuyok.supabase.co',
     crmAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impibm5hamhzZWRuY3F0YWV1eW9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTA5MzUsImV4cCI6MjA5NDc4NjkzNX0.1M_yPKsOoCUkjKAsIk40BxcKlqNrNPbLNOJoNnRqgD4',
   }, c.erp || {});
+  // Shortage notifications by email. Any SMTP mailbox works; simplest is a Gmail address with an "app password".
+  out.notify = Object.assign({ enabled: false, host: 'smtp.gmail.com', port: 465, user: '', password: '', from: '', to: '' }, c.notify || {});
   return out;
 }
 function saveConfigPatch(patch) {
@@ -266,8 +268,8 @@ const DATA_DIR = path.join(ROOT, 'data');
 const REPORTS_HTML = path.join(ROOT, 'reports.html');
 const CSV_HEADER = ['timestamp', 'picker', 'orderNo', 'customer', 'event', 'product', 'lot', 'before', 'after', 'target', 'detail'];
 let lastEventAt = 0;   // when the gun last reported activity (used to avoid updating mid-pick)
-const EVENT_TYPES = new Set(['order_loaded', 'order_refreshed', 'scan_ok', 'scan_rejected', 'count_set', 'line_short', 'line_unshort', 'line_reset', 'order_complete', 'order_verified', 'order_issues', 'order_cleared']);
-// (the bridge itself also writes 'erp_marked' / 'erp_failed' rows; those never come from the gun)
+const EVENT_TYPES = new Set(['order_loaded', 'order_refreshed', 'scan_ok', 'scan_rejected', 'count_set', 'line_short', 'line_unshort', 'line_reset', 'order_complete', 'order_short', 'order_verified', 'order_issues', 'order_cleared']);
+// (the bridge itself also writes 'erp_marked' / 'erp_failed' / 'email_sent' / 'email_failed' rows; those never come from the gun)
 
 const pad = n => String(n).padStart(2, '0');
 const localDay = ts => { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
@@ -477,7 +479,7 @@ const erp = (() => {
   const digitsOf = v => String(v || '').replace(/\D/g, '');
   async function readDelivery(orderNo) {
     const no = digitsOf(orderNo);
-    const rows = await crmFetch('crm_deliveries?order_number=ilike.' + encodeURIComponent('*' + no + '*') + '&select=order_number,scheduled_date,delivery_date,pick_status,picked_at,picked_up_at,driver,updated_by');
+    const rows = await crmFetch('crm_deliveries?order_number=ilike.' + encodeURIComponent('*' + no + '*') + '&select=order_number,scheduled_date,delivery_date,pick_status,picked_at,picked_up_at,driver,updated_by,notes');
     return (rows || []).find(r => digitsOf(r.order_number) === no) || null;
   }
   // The most recently scheduled deliveries on the ERP calendar (diagnostic: shows what the calendar holds and that reads work).
@@ -496,8 +498,9 @@ const erp = (() => {
       if (row.pick_status === 'picked' || row.pick_status === 'picked_up') return record(no, { ok: true, status: 'already', message: 'ORD-' + no + ' was already ' + row.pick_status.replace('_', ' ') + ' in the ERP' });
       const now = new Date().toISOString();
       const s = await crmSession();
-      const upd = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(row.order_number), { method: 'PATCH',
-        body: JSON.stringify({ pick_status: 'picked', picked_at: now, picked_up_at: null, updated_by: s.email, updated_at: now }) });
+      const patch = { pick_status: 'picked', picked_at: now, picked_up_at: null, updated_by: s.email, updated_at: now };
+      if (/shortages:/.test(why)) { const note = 'SHORT (gun): ' + why.replace(/^.*shortages:\s*/, ''); patch.notes = ((row.notes || '') + (row.notes ? '\n' : '') + note).slice(0, 1000); }
+      const upd = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(row.order_number), { method: 'PATCH', body: JSON.stringify(patch) });
       if (!upd || !upd.length) return record(no, { ok: false, status: 'no_row', message: 'The ERP did not accept the update for ORD-' + no });
       marked.set(no, now);
       return record(no, { ok: true, status: 'marked', message: 'ORD-' + no + ' marked Picked in the ERP (' + why + ')' });
@@ -521,6 +524,113 @@ const erp = (() => {
   function reset() { main = null; crm = null; }
   return { markPicked, readDelivery, readRecent, test, status, reset, configured };
 })();
+
+// ---------------------------------------------------------------- email (minimal SMTP client, no dependencies)
+// Port 465 = TLS from the start (Gmail, most providers). Other ports: plain connection upgraded with STARTTLS. AUTH LOGIN.
+function smtpSend(o) {
+  const net = require('net'), tls = require('tls');
+  const port = Number(o.port) || 465, secure = port === 465, host = o.host;
+  const to = String(o.to || '').split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+  if (!host || !o.user || !o.password || !to.length) return Promise.reject(new Error('Email is not fully set up (server, login, password and a recipient are needed).'));
+  return new Promise((resolve, reject) => {
+    let sock, pending = '', waiters = [], finished = false;
+    const fail = e => { if (finished) return; finished = true; try { sock && sock.destroy(); } catch (x) {} reject(e instanceof Error ? e : new Error(String(e))); };
+    const flush = () => {
+      while (waiters.length) {
+        const lines = pending.split('\r\n'); let end = -1;
+        for (let k = 0; k < lines.length; k++) { if (/^\d{3} /.test(lines[k])) { end = k; break; } if (!/^\d{3}-/.test(lines[k])) { if (lines[k] === '' && k === lines.length - 1) break; return; } }
+        if (end < 0) return;
+        const text = lines.slice(0, end + 1).join('\n'); pending = lines.slice(end + 1).join('\r\n');
+        waiters.shift().res({ code: +text.slice(0, 3), text });
+      }
+    };
+    const attach = s => { s.setTimeout(25000, () => fail('SMTP timeout talking to ' + host)); s.on('data', d => { pending += d.toString('utf8'); flush(); }); s.on('error', fail); s.on('close', () => { if (!finished) fail('SMTP connection closed unexpectedly'); }); };
+    const read = () => new Promise((res, rej) => { waiters.push({ res, rej }); flush(); });
+    const cmd = async (line, ok, label) => { if (line != null) sock.write(line + '\r\n'); const r = await read(); if (!ok.includes(r.code)) throw new Error('SMTP ' + (label || (line || 'greeting').split(' ')[0]) + ' failed: ' + r.text.split('\n').pop()); return r; };
+    (async () => {
+      sock = await new Promise((res, rej) => { const s = (secure ? tls : net).connect({ host, port, servername: host }, () => res(s)); s.once('error', rej); });
+      attach(sock);
+      await cmd(null, [220]);
+      await cmd('EHLO pickcheck.local', [250]);
+      if (!secure) {
+        await cmd('STARTTLS', [220]);
+        sock.removeAllListeners('data'); sock.removeAllListeners('close');
+        sock = await new Promise((res, rej) => { const t = tls.connect({ socket: sock, servername: host }, () => res(t)); t.once('error', rej); });
+        pending = ''; attach(sock);
+        await cmd('EHLO pickcheck.local', [250]);
+      }
+      await cmd('AUTH LOGIN', [334], 'AUTH');
+      await cmd(Buffer.from(o.user).toString('base64'), [334], 'AUTH (username)');
+      await cmd(Buffer.from(o.password).toString('base64'), [235], 'sign-in (check the email password / app password)');
+      await cmd('MAIL FROM:<' + (o.from || o.user) + '>', [250]);
+      for (const t of to) await cmd('RCPT TO:<' + t + '>', [250, 251]);
+      await cmd('DATA', [354]);
+      const body = String(o.text || '').replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..');
+      const msg = ['From: ' + (o.fromName ? '"' + o.fromName.replace(/"/g, '') + '" <' + (o.from || o.user) + '>' : (o.from || o.user)), 'To: ' + to.join(', '), 'Subject: ' + String(o.subject || '').replace(/[\r\n]+/g, ' '),
+        'Date: ' + new Date().toUTCString(), 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: 8bit', 'X-Mailer: PickCheck bridge', '', body].join('\r\n');
+      await cmd(msg + '\r\n.', [250], 'send');
+      finished = true; try { sock.write('QUIT\r\n'); sock.end(); } catch (x) {}
+      resolve({ ok: true, to });
+    })().catch(fail);
+  });
+}
+
+// ---------------------------------------------------------------- shortage notifications
+const notify = (() => {
+  let last = null;
+  const c = () => cfg.notify;
+  const configured = () => !!(c().host && c().user && c().password && c().to);
+  async function send(subject, text) {
+    try {
+      if (!c().enabled) return record({ ok: false, status: 'disabled', message: 'email notifications are turned off', subject });
+      if (!configured()) return record({ ok: false, status: 'unconfigured', message: 'email is not set up', subject });
+      await smtpSend({ host: c().host, port: c().port, user: c().user, password: c().password, from: c().from || c().user, fromName: 'Oleum Orders', to: c().to, subject, text });
+      return record({ ok: true, status: 'sent', message: 'sent to ' + c().to + ': ' + subject, subject });
+    } catch (e) { return record({ ok: false, status: 'error', message: e.message, subject }); }
+  }
+  function record(r) { last = { at: new Date().toISOString(), ...r }; log('Email: ' + r.message); try { appendEvents([{ ts: Date.now(), picker: 'bridge', orderNo: r.orderNo || '', customer: '', event: r.ok ? 'email_sent' : 'email_failed', product: '', lot: '', before: 0, after: 0, target: 0, detail: r.message }]); } catch (e) {} return r; }
+  const cultiveraLink = no => { const hit = cache.get(String(no)); return hit && hit.data && hit.data.id ? 'https://wa.cultiverapro.com/fulfillment#/order/' + hit.data.id : 'https://wa.cultiverapro.com/fulfillment#/orders'; };
+  async function shortage(e) {
+    const no = String(e.orderNo || ''), found = num(e.before), want = num(e.target);
+    const subject = 'Shortage: ORD-' + no + ' ' + (e.product || '') + ' — found ' + found + ' of ' + want;
+    const text = ['The picker could not find the full quantity for an order line.', '',
+      'Order:      ORD-' + no + (e.customer ? ' (' + e.customer + ')' : ''), 'Product:    ' + (e.product || ''), 'Lot:        ' + (e.lot || ''),
+      'Ordered:    ' + want, 'Found:      ' + found, 'Short by:   ' + (want - found), 'Picker:     ' + (e.picker || ''), 'When:       ' + new Date(e.ts).toLocaleString(), '',
+      'Please update the quantity in Cultivera: ' + cultiveraLink(no), '',
+      'The picker can keep going and finish the order; the gun treats this line as done. If you reduce the quantity in Cultivera while the order is still open on the gun, "Refresh from Cultivera" on the gun picks it up.',
+      '', '— Oleum Orders (Pick Check bridge)'].join('\n');
+    const r = await send(subject, text); r.orderNo = no; return r;
+  }
+  async function orderShort(e) {
+    const no = String(e.orderNo || '');
+    const subject = 'ORD-' + no + ' finished with shortages — ' + (e.detail || '').slice(0, 80);
+    const text = ['The picker finished the order with one or more lines short.', '', 'Order:   ORD-' + no + (e.customer ? ' (' + e.customer + ')' : ''), 'Picked:  ' + num(e.before) + ' of ' + num(e.target) + ' units', 'Short:   ' + (e.detail || ''), 'Picker:  ' + (e.picker || ''), 'When:    ' + new Date(e.ts).toLocaleString(), '',
+      'Cultivera: ' + cultiveraLink(no), '', '— Oleum Orders (Pick Check bridge)'].join('\n');
+    const r = await send(subject, text); r.orderNo = no; return r;
+  }
+  async function test() {
+    if (!configured()) throw httpError(400, 'Enter the email server, login, password and recipient first.');
+    await smtpSend({ host: c().host, port: c().port, user: c().user, password: c().password, from: c().from || c().user, fromName: 'Oleum Orders', to: c().to, subject: 'Oleum Orders: test email', text: 'This is a test from the Pick Check bridge. Shortage notifications will arrive like this.\n\nSent ' + new Date().toLocaleString() });
+    return { ok: true, to: c().to };
+  }
+  function status() { return { enabled: !!c().enabled, configured: configured(), host: c().host, port: c().port, user: c().user, from: c().from, to: c().to, last }; }
+  return { shortage, orderShort, test, status };
+})();
+
+// Open shortages from the event log: line_short not withdrawn (line_unshort / line_reset) since, newest first.
+function openShortages(days = 14) {
+  const to = localDay(Date.now()), from = localDay(Date.now() - days * 86400000);
+  const ev = readEvents(from, to);
+  const key = e => e.orderNo + '|' + e.product;
+  const state = new Map();
+  for (const e of ev) {
+    if (e.event === 'line_short') state.set(key(e), { at: e.timestamp, orderNo: e.orderNo, customer: e.customer, product: e.product, lot: e.lot, found: e.before, ordered: e.target, picker: e.picker, orderDone: false, resolved: false });
+    else if (e.event === 'line_unshort' || e.event === 'line_reset') { const s = state.get(key(e)); if (s) s.resolved = true; }
+    else if (e.event === 'order_short' || e.event === 'order_verified' || e.event === 'order_issues') for (const s of state.values()) if (s.orderNo === e.orderNo) s.orderDone = e.event !== 'order_issues';
+    else if (e.event === 'order_refreshed') for (const s of state.values()) if (s.orderNo === e.orderNo && /quantities changed/.test(e.detail || '')) s.quantityChanged = true;
+  }
+  return [...state.values()].filter(s => !s.resolved).sort((a, b) => b.at.localeCompare(a.at));
+}
 
 // ---------------------------------------------------------------- self-update from GitHub
 // The code lives in a GitHub repo (config "updates.repo", e.g. "oleumlabs/pickcheck"). "Update now" downloads the latest
@@ -660,13 +770,32 @@ const server = http.createServer(async (req, res) => {
         const events = sanitizeEvents(body.events);
         if (events.length) { appendEvents(events); lastEventAt = Date.now(); }
         send(res, 200, { ok: true, stored: events.length });
-        // After answering the gun: mark completed orders as Picked in the ERP (once per order).
+        // After answering the gun: email shortages to the office, and mark completed orders as Picked in the ERP.
+        for (const e of events) {
+          if (e.event === 'line_short') notify.shortage(e).catch(() => {});
+          if (e.event === 'order_short') notify.orderShort(e).catch(() => {});
+        }
         if (cfg.erp.enabled) {
-          const trigger = cfg.erp.markOn === 'verified' ? /^order_verified$/ : /^(order_complete|order_verified)$/;
+          // "order_short" = Finish pressed with declared shortages: the order is picked as far as it can be, so it counts as verified.
+          const trigger = cfg.erp.markOn === 'verified' ? /^(order_verified|order_short)$/ : /^(order_complete|order_verified|order_short)$/;
           const nos = [...new Set(events.filter(e => trigger.test(e.event) && e.orderNo).map(e => String(e.orderNo)))];
-          for (const no of nos) erp.markPicked(no, 'gun completed the order').catch(() => {});
+          for (const no of nos) { const shortEv = events.find(e => e.event === 'order_short' && String(e.orderNo) === no); erp.markPicked(no, shortEv ? 'gun finished the order with shortages: ' + (shortEv.detail || '') : 'gun completed the order').catch(() => {}); }
         }
         return;
+      }
+      if (p === '/api/notify/status') return send(res, 200, notify.status());
+      if (req.method === 'POST' && p === '/api/notify/test') return send(res, 200, await notify.test());
+      if (p === '/api/shortages') return send(res, 200, { shortages: openShortages(Number(url.searchParams.get('days')) || 14) });
+      if (req.method === 'POST' && p === '/api/settings/notify') {
+        const body = await readBody(req);
+        const patch = { notify: {} };
+        for (const k of ['host', 'user', 'from', 'to']) if (typeof body[k] === 'string') patch.notify[k] = body[k].trim();
+        if (body.port) patch.notify.port = Number(body.port) || 465;
+        if (typeof body.password === 'string' && body.password) patch.notify.password = body.password;
+        if (typeof body.enabled === 'boolean') patch.notify.enabled = body.enabled;
+        saveConfigPatch(patch); Object.assign(cfg.notify, patch.notify);
+        log('Email settings saved (' + (cfg.notify.enabled ? 'enabled' : 'disabled') + ', to ' + (cfg.notify.to || 'nobody') + ')');
+        return send(res, 200, notify.status());
       }
       if (p === '/api/erp/status') return send(res, 200, erp.status());
       if (req.method === 'POST' && p === '/api/erp/test') return send(res, 200, await erp.test());

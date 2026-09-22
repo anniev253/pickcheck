@@ -161,6 +161,25 @@ serving PC is the pick history in `bridge\data\`; download it now and then from 
 For a setup that does not depend on any office PC at all, the bridge can run on a small cloud
 server (about $5/month) with exactly the same files; the gun would not notice the difference.
 
+## Shortages: what the picker does, what the office gets
+
+1. The picker scans what can be found, taps the line → **Mark line short (can't find the rest)** →
+   confirms "found 5 of 8". The line counts as done on the gun.
+2. The bridge immediately emails the office: order, customer, product, lot barcode, ordered/found,
+   picker, and a link to the order in Cultivera. It appears on the reports page under **Shortages
+   reported from the gun** until withdrawn.
+3. The picker finishes the order as usual. **Finish** with only short lines gives "Complete with N
+   short lines" (the order is done on the gun) and, if the ERP link is on, the order is marked
+   Picked in the ERP with a `SHORT (gun): …` note. A second email summarises the finished order.
+4. The office adjusts the quantity in Cultivera. If the picker still has the order open,
+   **Refresh from Cultivera** pulls the new quantity and the line shows complete.
+
+Lines that are neither picked nor marked short show as MISSING and block Finish until resolved.
+
+Email setup: reports page → **Shortage emails → Settings**. Any SMTP mailbox works; the simplest
+is a Gmail address with an app password (server `smtp.gmail.com`, port 465). Enter the recipient(s),
+tick Enabled, Save, then **Send test email**. Settings are stored under `notify` in `config.json`.
+
 ## ERP link: mark orders Picked on the deliveries page
 
 When the gun completes an order (every unit scanned, or Finish & verify, per the setting), the

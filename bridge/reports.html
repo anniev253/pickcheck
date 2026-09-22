@@ -39,7 +39,7 @@
   .pill.ok{background:var(--go-bg);color:var(--go)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.err{background:var(--err-bg);color:var(--err)}
   .empty{color:var(--muted);padding:18px;text-align:center}
   .muted{color:var(--text-2)}
-  .ev-scan_ok{color:var(--go);font-weight:700} .ev-scan_rejected{color:var(--err);font-weight:700} .ev-order_verified,.ev-order_complete,.ev-erp_marked{color:var(--gold-600);font-weight:700} .ev-erp_failed{color:var(--err);font-weight:700} .ev-order_issues,.ev-line_short{color:var(--warn);font-weight:700}
+  .ev-scan_ok{color:var(--go);font-weight:700} .ev-scan_rejected{color:var(--err);font-weight:700} .ev-order_verified,.ev-order_complete,.ev-erp_marked{color:var(--gold-600);font-weight:700} .ev-erp_failed{color:var(--err);font-weight:700} .ev-order_issues,.ev-line_short,.ev-order_short{color:var(--warn);font-weight:700} .ev-email_sent{color:var(--gold-600)} .ev-email_failed{color:var(--err);font-weight:700}
   .notice{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:16px}
   .range-btn{font-family:var(--sans);font-size:13px;font-weight:700;padding:8px 14px;border-radius:8px;background:var(--gold);color:#fff;border:1px solid var(--gold);cursor:pointer}
   .range-btn.secondary{background:var(--surface);color:var(--navy);border-color:var(--line)}
@@ -53,6 +53,30 @@
     <div style="flex:1;min-width:240px"><div style="font-weight:700">Bridge software</div><div class="muted" id="updText">Checking version…</div></div>
     <button id="updBtn" class="range-btn" style="display:none">Update now</button>
     <button id="rbBtn" class="range-btn" style="display:none">Roll back</button>
+  </div>
+  <div class="notice" id="shortBox" style="margin:10px 0 0;display:none">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:240px"><div style="font-weight:700">Shortages reported from the gun</div><div class="muted" id="shortText"></div></div></div>
+    <div class="tablewrap" style="margin-top:10px"><table id="shortTable"></table></div>
+  </div>
+  <div class="notice" id="mailBox" style="margin:10px 0 0">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px"><div style="font-weight:700">Shortage emails</div><div class="muted" id="mailText">Checking…</div></div>
+      <button class="range-btn secondary" id="mailToggle">Settings</button>
+    </div>
+    <div id="mailForm" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <div class="muted" style="margin-bottom:8px">When the picker marks a line short, the bridge emails the details (order, product, lot, found/ordered) and a link to the Cultivera order. It sends from a mailbox you provide. Easiest: a Gmail address with an <b>app password</b> (Google Account → Security → 2-Step Verification → App passwords); server smtp.gmail.com, port 465.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="mailHost" placeholder="SMTP server (smtp.gmail.com)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:200px">
+        <input id="mailPort" placeholder="Port (465)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;width:100px">
+        <input id="mailUser" placeholder="Sending email (login)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:220px">
+        <input id="mailPw" type="password" placeholder="Password / app password (blank = keep)" autocomplete="new-password" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:240px">
+        <input id="mailTo" placeholder="Send to (comma-separated)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:240px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="mailEnabled"> Enabled</label>
+        <button class="range-btn" id="mailSave">Save</button>
+        <button class="range-btn secondary" id="mailTest">Send test email</button>
+        <span class="muted" id="mailResult" style="font-size:13px"></span>
+      </div>
+    </div>
   </div>
   <div class="notice" id="erpBox" style="margin:10px 0 0">
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -250,5 +274,37 @@
     } catch (e) { $('erpResult').textContent = 'Could not read the ERP calendar: ' + e.message; }
   };
   erpStatus();
+
+  /* ---- shortages + email ---- */
+  async function shortages() {
+    try {
+      const r = await fetch('/api/shortages?days=14', { credentials: 'same-origin' }).then(r => r.json()); if (r.error) throw new Error(r.error);
+      const list = r.shortages || [];
+      $('shortBox').style.display = list.length ? '' : 'none';
+      $('shortText').textContent = list.length + ' open in the last 14 days. Fix the quantity in Cultivera, then the line disappears here when the picker refreshes or the shortage is withdrawn.';
+      $('shortTable').innerHTML = '<tr><th>When</th><th>Order</th><th>Customer</th><th>Product</th><th>Lot</th><th class="n">Found / ordered</th><th>Picker</th><th>Order</th></tr>' +
+        list.map(s => '<tr><td>' + fmtTime(s.at) + '</td><td>ORD-' + esc(s.orderNo) + '</td><td>' + esc(s.customer) + '</td><td>' + esc(s.product) + '</td><td style="font-family:var(--mono);font-size:12px">' + esc(s.lot) + '</td><td class="n">' + s.found + ' / ' + s.ordered + '</td><td>' + esc(s.picker) + '</td><td>' + (s.orderDone ? '<span class="pill ok">finished</span>' : '<span class="pill warn">in progress</span>') + (s.quantityChanged ? ' <span class="pill">qty updated</span>' : '') + '</td></tr>').join('');
+    } catch (e) { /* leave hidden */ }
+  }
+  async function mailStatus() {
+    try {
+      const s = await fetch('/api/notify/status', { credentials: 'same-origin' }).then(r => r.json()); if (s.error) throw new Error(s.error);
+      $('mailHost').value = s.host || ''; $('mailPort').value = s.port || 465; $('mailUser').value = s.user || ''; $('mailTo').value = s.to || ''; $('mailEnabled').checked = !!s.enabled;
+      const lastTxt = s.last ? ' Last: ' + fmtWhen(s.last.at) + ' — ' + s.last.message : '';
+      $('mailText').textContent = !s.configured ? 'Not set up. Open Settings to enter a sending mailbox and a recipient.' : !s.enabled ? 'Off (would send to ' + s.to + ').' + lastTxt : 'On: shortages are emailed to ' + s.to + '.' + lastTxt;
+    } catch (e) { $('mailText').textContent = 'Could not read email status: ' + e.message; }
+  }
+  $('mailToggle').onclick = () => { const f = $('mailForm'); f.style.display = f.style.display === 'none' ? '' : 'none'; };
+  $('mailSave').onclick = async () => {
+    $('mailResult').textContent = 'Saving…';
+    try { await post('/api/settings/notify', { host: $('mailHost').value, port: $('mailPort').value, user: $('mailUser').value, password: $('mailPw').value, to: $('mailTo').value, enabled: $('mailEnabled').checked }); $('mailPw').value = ''; $('mailResult').textContent = 'Saved.'; await mailStatus(); }
+    catch (e) { $('mailResult').textContent = 'Save failed: ' + e.message; }
+  };
+  $('mailTest').onclick = async () => {
+    $('mailResult').textContent = 'Sending a test email…';
+    try { const r = await post('/api/notify/test'); $('mailResult').textContent = 'Test email sent to ' + r.to + '. Check the inbox (and spam).'; }
+    catch (e) { $('mailResult').textContent = 'Test failed: ' + e.message; }
+  };
+  mailStatus(); shortages(); setInterval(shortages, 60000);
 })();
 </script>

@@ -404,15 +404,20 @@ const App = (() => {
     try { navigator.vibrate([80, 60, 80, 60, 300]); } catch (e) {}
   }
 
-  const orderComplete = () => order && order.lines.length > 0 && order.lines.every(l => lineDone(l));
+  // An order is "complete" when every line is either fully picked or declared short (the office is told about shorts).
+  const orderComplete = () => order && order.lines.length > 0 && order.lines.every(l => lineDone(l) || l.short);
+  const shortLines = () => order ? order.lines.filter(l => l.short && !lineDone(l)) : [];
   function checkOrderDone() {
     if (!orderComplete() || order.doneNotified) return;
     order.doneNotified = true; save();
     chimeDone();
     const d = $('doneBanner'); d.classList.add('show');
-    $('doneText').textContent = 'All ' + order.lines.reduce((s, l) => s + lineTarget(l), 0) + ' units across ' + order.lines.length + ' lines are picked.';
+    const shorts = shortLines();
+    $('doneText').textContent = shorts.length
+      ? (order.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0)) + ' units picked; ' + shorts.length + ' line' + (shorts.length > 1 ? 's' : '') + ' short (office notified). Press Finish to complete.'
+      : 'All ' + order.lines.reduce((s, l) => s + lineTarget(l), 0) + ' units across ' + order.lines.length + ' lines are picked.';
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    logEvent('order_complete', { before: order.lines.reduce((s, l) => s + lineTarget(l), 0), after: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: 'every line reached its quantity' });
+    logEvent('order_complete', { before: order.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0), after: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: shorts.length ? 'every line picked or declared short (' + shorts.length + ' short)' : 'every line reached its quantity' });
   }
 
   /* ---------- bridge + sign-in ---------- */
@@ -511,7 +516,7 @@ const App = (() => {
       fetchedAt: raw.fetchedAt, finished: previous ? previous.finished : false,
       lines: raw.lines.map(l => {
         const prev = prevLines.find(p => p.itemId === l.itemId);
-        return {
+        const line = {
           itemId: l.itemId, name: l.name, size: l.size, strain: l.strain, qty: l.qty, allocated: l.allocated, sample: l.sample, location: l.location || '', locationSource: l.locationSource || '',
           mode: prev ? prev.mode : 'scan', short: prev ? prev.short : false, manual: prev ? prev.manual : null,
           allocs: l.allocs.map(a => {
@@ -519,6 +524,8 @@ const App = (() => {
             return { barcodes: a.barcodes, qty: a.qty, location: a.location, picked: pa ? Math.min(pa.picked, a.qty) : 0 };
           })
         };
+        if (line.short && linePicked(line) >= lineTarget(line)) line.short = false;   // the office reduced the quantity: no longer short
+        return line;
       })
     };
   }
@@ -545,10 +552,13 @@ const App = (() => {
   async function refreshOrder() {
     try {
       const raw = await bridge('/api/order/' + order.orderNo);
+      const before = order.lines.reduce((s, l) => s + lineTarget(l), 0);
       order = normalizeOrder(raw, order);
       state.orders[order.orderNo] = order; save(); renderPick();
-      logEvent('order_refreshed', { before: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: order.status });
-      $('lastScan').textContent = '↻ Refreshed from Cultivera (' + order.status + ')';
+      const after = order.lines.reduce((s, l) => s + lineTarget(l), 0);
+      logEvent('order_refreshed', { before: order.lines.length, target: after, detail: order.status + (after !== before ? ' — quantities changed ' + before + ' → ' + after : '') });
+      $('lastScan').textContent = '↻ Refreshed from Cultivera (' + order.status + ')' + (after !== before ? ' — quantities updated' : '');
+      checkOrderDone();
     } catch (e) { $('lastScan').textContent = '✕ ' + e.message; beep(false); }
   }
 
@@ -637,7 +647,7 @@ const App = (() => {
         ? ' · <span class="sec">section: ' + esc(locs.join(' / ')) + '</span>'
         : ' · <span class="loc">📍 ' + esc(locs.join(' / ')) + '</span>');
       const meta = esc([l.strain, l.size].filter(Boolean).join(' · ')) + locHtml;
-      const flags = (l.short ? ' · MARKED SHORT' : '') + (l.mode === 'count' ? ' · COUNT MODE' : '');
+      const flags = (l.short && !lineDone(l) ? ' · SHORT: found ' + p + ' of ' + t + ' (office notified)' : '') + (l.mode === 'count' ? ' · COUNT MODE' : '');
       const lots = l.allocs.length
         ? '<div class="lots">' + l.allocs.map(a => '<span class="lot4' + (a.picked >= a.qty ? ' full' : '') + '"><small>…</small>' + esc(a.barcodes[0].slice(-tailLen)) + (l.allocs.length > 1 ? '<span class="lq">' + a.picked + '/' + a.qty + '</span>' : '') + '</span>').join('') + '</div>'
         : '<div class="sub" style="color:var(--err);font-weight:700">NOT ALLOCATED IN CULTIVERA</div>';
@@ -712,7 +722,20 @@ const App = (() => {
     else {
       if (!l.allocs.length) btn('Enter counted quantity', 'primary', () => showQtyPad(-1));
       else btn(l.mode === 'count' ? 'Switch to scan every unit' : 'Count mode for this line', 'primary', () => { l.mode = l.mode === 'count' ? 'scan' : 'count'; save(); renderPick(); closeSheet(); });
-      btn(l.short ? 'Un-mark short' : 'Mark line short', '', () => { l.short = !l.short; logEvent(l.short ? 'line_short' : 'line_unshort', { product: l.name, before: linePicked(l), after: linePicked(l), target: lineTarget(l) }); save(); renderPick(); closeSheet(); });
+      btn(l.short ? 'Un-mark short' : 'Mark line short (can\'t find the rest)', '', () => {
+        const found = linePicked(l), want = lineTarget(l), lots = l.allocs.map(a => a.barcodes[0]).join(' ');
+        if (!l.short) {
+          if (found >= want) { alert('This line is already complete.'); return; }
+          if (!confirm('Mark short: found ' + found + ' of ' + want + '?\n\nThe office will be notified to adjust the order quantity in Cultivera. You can keep picking and finish the order.')) return;
+          l.short = true;
+          logEvent('line_short', { product: l.name, lot: lots, before: found, after: found, target: want, detail: 'found ' + found + ' of ' + want + ' — short by ' + (want - found) });
+        } else {
+          l.short = false;
+          logEvent('line_unshort', { product: l.name, lot: lots, before: found, after: found, target: want, detail: 'shortage withdrawn' });
+        }
+        save(); renderPick(); closeSheet();
+        checkOrderDone();
+      });
       btn('Reset line to 0', 'danger', () => { if (confirm('Reset this line to 0 picked?')) { logEvent('line_reset', { product: l.name, before: linePicked(l), after: 0, target: lineTarget(l) }); l.allocs.forEach(a => a.picked = 0); l.manual = null; l.short = false; order.doneNotified = false; $('doneBanner').classList.remove('show'); save(); renderPick(); closeSheet(); } });
       btn('Close', '', closeSheet);
     }
@@ -767,19 +790,27 @@ const App = (() => {
     const p = linePicked(l), t = lineTarget(l);
     if (!l.allocs.length && l.manual == null) return { cls: 'err', text: 'NOT ALLOCATED' };
     if (p === t) return { cls: 'ok', text: 'OK' };
-    if (p < t) return { cls: l.short ? 'warn' : 'err', text: (l.short ? 'SHORT ' : 'MISSING ') + (t - p) };
+    if (p < t) return { cls: l.short ? 'warn' : 'err', text: l.short ? 'SHORT: found ' + p + ' of ' + t : 'MISSING ' + (t - p) };
     return { cls: 'err', text: 'OVER +' + (p - t) };
   }
 
   function finishPick() {
-    const probs = order.lines.filter(l => lineStatus(l).cls !== 'ok');
+    const probs = order.lines.filter(l => lineStatus(l).cls === 'err');          // missing or over, not declared short
+    const shorts = shortLines();
     const v = $('sumVerdict');
-    logEvent(probs.length ? 'order_issues' : 'order_verified', { before: order.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0), after: order.lines.length - probs.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: probs.length ? probs.map(l => lineStatus(l).text + ': ' + l.name).join('; ') : 'all lots match' });
-    if (!probs.length) {
-      v.innerHTML = '<h2 style="color:var(--go)">✓ Order verified</h2><p class="muted" style="margin:6px 0 0">Every lot matches Cultivera — ' + order.lines.length + ' lines, ' + order.lines.reduce((s, l) => s + lineTarget(l), 0) + ' units. Clear to manifest.</p>';
+    const picked = order.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0), target = order.lines.reduce((s, l) => s + lineTarget(l), 0);
+    const shortDetail = shorts.map(l => l.name + ' (lot ' + l.allocs.map(a => '…' + a.barcodes[0].slice(-4)).join(' ') + '): found ' + linePicked(l) + ' of ' + lineTarget(l)).join('; ');
+    if (probs.length) {
+      logEvent('order_issues', { before: picked, after: order.lines.length - probs.length - shorts.length, target, detail: probs.map(l => lineStatus(l).text + ': ' + l.name).join('; ') + (shorts.length ? '; SHORT: ' + shortDetail : '') });
+      v.innerHTML = '<h2 style="color:var(--warn)">⚠ ' + probs.length + ' line' + (probs.length > 1 ? 's' : '') + ' off</h2><p class="muted" style="margin:6px 0 0">Lines marked MISSING have not been picked and not been declared short. Pick them, or open the line and mark it short, then Finish again.</p>';
+    } else if (shorts.length) {
+      logEvent('order_short', { before: picked, after: order.lines.length - shorts.length, target, detail: shortDetail });
+      v.innerHTML = '<h2 style="color:var(--warn)">✓ Complete with ' + shorts.length + ' short line' + (shorts.length > 1 ? 's' : '') + '</h2><p class="muted" style="margin:6px 0 0">' + picked + ' of ' + target + ' units picked. The office has been notified to adjust the order in Cultivera; the order is done on the gun.</p>';
       order.finished = true;
     } else {
-      v.innerHTML = '<h2 style="color:var(--warn)">⚠ ' + probs.length + ' line' + (probs.length > 1 ? 's' : '') + ' off</h2><p class="muted" style="margin:6px 0 0">Review below before manifesting.</p>';
+      logEvent('order_verified', { before: picked, after: order.lines.length, target, detail: 'all lots match' });
+      v.innerHTML = '<h2 style="color:var(--go)">✓ Order verified</h2><p class="muted" style="margin:6px 0 0">Every lot matches Cultivera — ' + order.lines.length + ' lines, ' + target + ' units. Clear to manifest.</p>';
+      order.finished = true;
     }
     save();
     const s = $('sumLines'); s.innerHTML = '';
