@@ -167,7 +167,8 @@ When the gun completes an order (every unit scanned, or Finish & verify, per the
 bridge marks that order **Picked** on production.oleumlabs.com → Sales → Deliveries, exactly as the
 page's own "Mark picked" button does: `crm_deliveries.pick_status = 'picked'`, `picked_at = now`,
 `updated_by = <ERP account>`. Only orders already on that calendar are touched; others are logged as
-skipped. Orders already Picked / Picked up are left alone.
+skipped. Orders already Picked / Picked up are left alone. (The ERP stores order numbers as text
+such as `ORD - 15759`; the bridge matches on the digits, so any of those spellings work.)
 
 Set it up on the reports page → **ERP link → Settings**: enter an ERP email + password (an account
 that is allowed to edit deliveries), tick Enabled, Save, then **Test connection**. The login is

@@ -472,9 +472,13 @@ const erp = (() => {
     return j;
   }
 
+  // The ERP stores order numbers as text like "ORD - 15759" (sometimes "15759" or "ORD-15759"), so match on the digits:
+  // fetch candidates containing the number, then keep the one whose digits are exactly this order.
+  const digitsOf = v => String(v || '').replace(/\D/g, '');
   async function readDelivery(orderNo) {
-    const rows = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(orderNo) + '&select=order_number,scheduled_date,delivery_date,pick_status,picked_at,picked_up_at,driver');
-    return rows && rows[0] ? rows[0] : null;
+    const no = digitsOf(orderNo);
+    const rows = await crmFetch('crm_deliveries?order_number=ilike.' + encodeURIComponent('*' + no + '*') + '&select=order_number,scheduled_date,delivery_date,pick_status,picked_at,picked_up_at,driver,updated_by');
+    return (rows || []).find(r => digitsOf(r.order_number) === no) || null;
   }
   // The most recently scheduled deliveries on the ERP calendar (diagnostic: shows what the calendar holds and that reads work).
   async function readRecent(limit = 12) {
@@ -492,7 +496,7 @@ const erp = (() => {
       if (row.pick_status === 'picked' || row.pick_status === 'picked_up') return record(no, { ok: true, status: 'already', message: 'ORD-' + no + ' was already ' + row.pick_status.replace('_', ' ') + ' in the ERP' });
       const now = new Date().toISOString();
       const s = await crmSession();
-      const upd = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(no), { method: 'PATCH',
+      const upd = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(row.order_number), { method: 'PATCH',
         body: JSON.stringify({ pick_status: 'picked', picked_at: now, picked_up_at: null, updated_by: s.email, updated_at: now }) });
       if (!upd || !upd.length) return record(no, { ok: false, status: 'no_row', message: 'The ERP did not accept the update for ORD-' + no });
       marked.set(no, now);
