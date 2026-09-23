@@ -521,10 +521,17 @@ const App = (() => {
     const prevFor = l => prevLines.find(p => p.itemId === l.itemId)
       || prevLines.find(p => p.allocs.some(x => l.allocs.some(a => a.barcodes.some(b => x.barcodes.includes(b)))))
       || prevLines.find(p => p.name === l.name && p.qty === l.qty);
-    const build = h => raw.lines.map(l => {
+    // One tile per lot: a Cultivera line allocated from two lots becomes two lines, each with its own barcode and count.
+    const expanded = [];
+    for (const l of raw.lines) {
+      if (l.allocs.length <= 1) { expanded.push(l); continue; }
+      l.allocs.forEach((a, i) => expanded.push(Object.assign({}, l, { itemId: l.itemId + ':' + a.barcodes[0], parentId: l.itemId, lotIndex: i + 1, lotCount: l.allocs.length, qty: a.qty, allocated: a.qty, allocs: [a] })));
+    }
+    const build = h => expanded.map(l => {
       const prev = prevFor(l);
       const line = {
-        itemId: l.itemId, name: l.name, size: l.size, strain: l.strain, qty: l.qty, allocated: l.allocated, sample: l.sample, location: l.location || "", locationSource: l.locationSource || "",
+        itemId: l.itemId, parentId: l.parentId || null, lotIndex: l.lotIndex || 0, lotCount: l.lotCount || 0,
+        name: l.name, size: l.size, strain: l.strain, qty: l.qty, allocated: l.allocated, sample: l.sample, location: l.location || "", locationSource: l.locationSource || "",
         mode: prev ? prev.mode : "scan", short: prev ? prev.short : false, manual: prev ? prev.manual : null,
         allocs: l.allocs.map(a => {
           const pa = prev && prev.allocs.find(x => x.barcodes.some(b => a.barcodes.includes(b)));
@@ -677,7 +684,7 @@ const App = (() => {
         ? ' · <span class="sec">section: ' + esc(locs.join(' / ')) + '</span>'
         : ' · <span class="loc">📍 ' + esc(locs.join(' / ')) + '</span>');
       const meta = esc([l.strain, l.size].filter(Boolean).join(' · ')) + locHtml;
-      const flags = (l.short && !lineDone(l) ? ' · SHORT: found ' + p + ' of ' + t + ' (office notified)' : '') + (l.mode === 'count' ? ' · COUNT MODE' : '');
+      const flags = (l.lotCount ? ' · lot ' + l.lotIndex + ' of ' + l.lotCount : '') + (l.short && !lineDone(l) ? ' · SHORT: found ' + p + ' of ' + t + ' (office notified)' : '') + (l.mode === 'count' ? ' · COUNT MODE' : '');
       const lots = l.allocs.length
         ? '<div class="lots">' + l.allocs.map(a => '<span class="lot4' + (a.picked >= a.qty ? ' full' : '') + '"><small>…</small>' + esc(a.barcodes[0].slice(-tailLen)) + (l.allocs.length > 1 ? '<span class="lq">' + a.picked + '/' + a.qty + '</span>' : '') + '</span>').join('') + '</div>'
         : '<div class="sub" style="color:var(--err);font-weight:700">NOT ALLOCATED IN CULTIVERA</div>';
@@ -735,7 +742,7 @@ const App = (() => {
     sheetLineIdx = i; sheetLotIdx = -1; qtyBuffer = '';
     const l = order.lines[i];
     $('sheetName').textContent = l.name;
-    $('sheetMeta').textContent = [l.strain, l.size, l.location ? (l.locationSource === 'productLine' ? 'section: ' + l.location : '📍 ' + l.location) : '', 'ordered ' + l.qty, l.allocs.length ? 'allocated ' + lineTarget(l) : 'not allocated'].filter(Boolean).join(' · ');
+    $('sheetMeta').textContent = [l.strain, l.size, l.lotCount ? 'lot ' + l.lotIndex + ' of ' + l.lotCount : '', l.location ? (l.locationSource === 'productLine' ? 'section: ' + l.location : '📍 ' + l.location) : '', 'ordered ' + l.qty, l.allocs.length ? 'allocated ' + lineTarget(l) : 'not allocated'].filter(Boolean).join(' · ');
     $('qtyDisplay').style.display = 'none'; $('qtyPad').style.display = 'none';
     const lots = $('sheetLots'); lots.innerHTML = '';
     l.allocs.forEach((a, ai) => {
