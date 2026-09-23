@@ -56,6 +56,10 @@
   .toolbar{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
   .errbox{background:var(--err-bg);border:1px solid var(--err-line);color:#991b1b;border-radius:10px;padding:12px 14px;display:none}
   .syncwarn{position:fixed;top:var(--bar);left:0;right:0;z-index:29;background:var(--warn-bg);border-bottom:2px solid var(--warn-line);color:#7c2d12;padding:8px 14px;font-size:13px;display:none}
+  .restored{display:none;background:var(--go-bg);border:1px solid var(--go-line);color:#166534;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:14px}
+  .restored.show{display:block}
+  .restored.open{background:var(--surface-2);border-color:var(--line);color:var(--text-2)}
+  .restored b{font-family:var(--head);font-size:17px;display:block;margin-bottom:2px;color:inherit}
   .pagetitle{margin:4px 0 16px}
   .pagetitle h2{font-size:24px}
   .pagetitle .sub{color:var(--text-2);font-size:14px;margin-top:2px}
@@ -263,6 +267,7 @@
     <div class="progresstext"><span id="progUnits"></span><span id="progLines"></span></div>
   </div>
   <div class="errbox" id="pickWarn" style="margin-bottom:12px"></div>
+  <div class="restored" id="restoredNote"></div>
   <div class="pinned" id="pinned">
     <div class="donebanner" id="doneBanner">
       <div class="big">✓ Order complete</div>
@@ -511,23 +516,38 @@ const App = (() => {
   /* ---------- order loading ---------- */
   function normalizeOrder(raw, previous) {
     const prevLines = previous ? previous.lines : [];
-    return {
-      id: raw.id, orderNo: raw.orderNo, customer: raw.customer, status: raw.status, cancelled: raw.cancelled,
-      fetchedAt: raw.fetchedAt, finished: previous ? previous.finished : false,
-      lines: raw.lines.map(l => {
-        const prev = prevLines.find(p => p.itemId === l.itemId);
-        const line = {
-          itemId: l.itemId, name: l.name, size: l.size, strain: l.strain, qty: l.qty, allocated: l.allocated, sample: l.sample, location: l.location || '', locationSource: l.locationSource || '',
-          mode: prev ? prev.mode : 'scan', short: prev ? prev.short : false, manual: prev ? prev.manual : null,
-          allocs: l.allocs.map(a => {
-            const pa = prev && prev.allocs.find(x => x.barcodes[0] === a.barcodes[0]);
-            return { barcodes: a.barcodes, qty: a.qty, location: a.location, picked: pa ? Math.min(pa.picked, a.qty) : 0 };
-          })
-        };
-        if (line.short && linePicked(line) >= lineTarget(line)) line.short = false;   // the office reduced the quantity: no longer short
-        return line;
-      })
-    };
+    // Find this line in the saved copy: by Cultivera item id, else by a shared lot barcode (item ids change when an order
+    // is invoiced), else by name + quantity.
+    const prevFor = l => prevLines.find(p => p.itemId === l.itemId)
+      || prevLines.find(p => p.allocs.some(x => l.allocs.some(a => a.barcodes.some(b => x.barcodes.includes(b)))))
+      || prevLines.find(p => p.name === l.name && p.qty === l.qty);
+    const build = h => raw.lines.map(l => {
+      const prev = prevFor(l);
+      const line = {
+        itemId: l.itemId, name: l.name, size: l.size, strain: l.strain, qty: l.qty, allocated: l.allocated, sample: l.sample, location: l.location || "", locationSource: l.locationSource || "",
+        mode: prev ? prev.mode : "scan", short: prev ? prev.short : false, manual: prev ? prev.manual : null,
+        allocs: l.allocs.map(a => {
+          const pa = prev && prev.allocs.find(x => x.barcodes.some(b => a.barcodes.includes(b)));
+          let picked = pa ? Math.min(pa.picked, a.qty) : 0;
+          if (h) { const fromLog = a.barcodes.map(b => h.lots[b]).find(v => v != null); if (fromLog != null) picked = Math.min(Number(fromLog) || 0, a.qty); }
+          return { barcodes: a.barcodes, qty: a.qty, location: a.location, picked };
+        })
+      };
+      if (h) { if (!line.allocs.length && h.manual[l.name] != null) line.manual = Number(h.manual[l.name]) || 0; if (h.shorts[l.name]) line.short = true; }
+      if (line.short && linePicked(line) >= lineTarget(line)) line.short = false;   // the office reduced the quantity: no longer short
+      return line;
+    });
+    const total = lines => lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0);
+    let lines = build(null), restored = null, finished = previous ? !!previous.finished : false, doneNotified = previous ? !!previous.doneNotified : false;
+    // Nothing usable on this device (new device, cleared browser, or the saved copy no longer matches) but the office log
+    // has progress: restore from the log.
+    if (!total(lines) && raw.history && raw.history.picked > 0) {
+      const h = raw.history; lines = build(h);
+      const end = h.ended;
+      if (end && (end.status === "verified" || end.status === "short")) { finished = true; doneNotified = true; }
+      restored = { at: end ? end.at : h.lastActivity, picker: h.picker, status: end ? end.status : "in progress", picked: total(lines) };
+    }
+    return { id: raw.id, orderNo: raw.orderNo, customer: raw.customer, status: raw.status, cancelled: raw.cancelled, fetchedAt: raw.fetchedAt, finished, doneNotified, restored, lines };
   }
 
   async function loadOrder(input) {
@@ -542,7 +562,7 @@ const App = (() => {
       state.orders[no] = order; state.active = no;
       state.recent = [no, ...state.recent.filter(x => x !== no)].slice(0, 8);
       save(); beep(true);
-      logEvent('order_loaded', { before: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: order.status });
+      logEvent('order_loaded', { before: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: order.status + (order.restored ? ' — restored from log: ' + order.restored.status + ', ' + order.restored.picked + ' units' : '') });
       enterPick();
     } catch (e) {
       if (e.message !== 'Sign in required.') { err.textContent = e.message; err.style.display = 'block'; beep(false); }
@@ -590,6 +610,7 @@ const App = (() => {
   // After a scan: ring the line that was counted. If it is still open, keep it in view; if it just completed it has
   // dropped below the unpicked lines, so keep the top of the list (the next item to pick) in view instead.
   function revealLine(i) {
+    if (!order || !order.lines[i]) return;
     const el = lineEl(i); if (!el) return;
     document.querySelectorAll('.lineitem.justscanned').forEach(x => x.classList.remove('justscanned'));
     el.classList.add('justscanned');
@@ -603,6 +624,15 @@ const App = (() => {
     $('pickOrder').textContent = order.orderNo;
     $('pickCust').textContent = order.customer;
     setTimeout(measureHeader, 0);
+    const rn = $('restoredNote'), r = order.restored;
+    if (r) {
+      const when = new Date(r.at).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      const done = r.status === 'verified' || r.status === 'short';
+      rn.className = 'restored show' + (done ? '' : ' open');
+      rn.innerHTML = done
+        ? '<b>✓ This order was already completed</b>' + (r.status === 'short' ? 'Finished with shortages ' : 'Verified ') + when + (r.picker ? ' by ' + esc(r.picker) : '') + '. Progress restored from the office log — nothing left to pick.'
+        : '<b>Progress restored from the office log</b>' + r.picked + ' units were picked before ' + when + (r.picker ? ' by ' + esc(r.picker) : '') + (r.status === 'issues' ? ' (Finish was pressed with problems)' : '') + '. Continue from here.';
+    } else rn.className = 'restored';
     const st = $('pickStatus'); st.textContent = order.cancelled ? 'CANCELLED' : order.status; st.className = 'pill ' + (order.cancelled ? 'err' : statusClass(order.status));
     const totalUnits = order.lines.reduce((s, l) => s + lineTarget(l), 0);
     const picked = order.lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0);

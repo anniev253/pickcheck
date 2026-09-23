@@ -200,6 +200,7 @@ async function getOrder(orderNoRaw) {
     cancelled: !!look.IsCanceled,
     released: !!pl.Released,
     lines,
+    history: orderHistory(orderNo),   // what the gun already reported for this order (so progress survives a device/browser change)
     fetchedAt: new Date().toISOString(),
   };
   cache.set(orderNo, { at: Date.now(), data });
@@ -609,6 +610,37 @@ const notify = (() => {
   function status() { return { enabled: !!c().enabled, configured: configured(), host: c().host, port: c().port, user: c().user, from: c().from, to: c().to, last }; }
   return { shortage, test, status };
 })();
+
+// Rebuild an order's picking progress from the event log (last 30 days): picked count per lot, shorts, and how it ended.
+// Lets the gun show a finished order as finished even if the device's own memory of it is gone.
+function orderHistory(orderNo) {
+  try {
+    const no = String(orderNo);
+    const to = localDay(Date.now()), from = localDay(Date.now() - 30 * 86400000);
+    const ev = readEvents(from, to).filter(e => e.orderNo === no && e.picker !== 'bridge');
+    if (!ev.length) return null;
+    const lots = {}, shorts = {}, manual = {};
+    let ended = null, lastActivity = null, picker = '';
+    for (const e of ev) {
+      lastActivity = e.timestamp; if (e.picker) picker = e.picker;
+      switch (e.event) {
+        case 'scan_ok': if (e.lot) lots[e.lot] = e.after; break;
+        case 'count_set': if (e.lot) lots[e.lot] = e.after; else if (e.product) manual[e.product] = e.after; break;
+        case 'line_reset': for (const k of Object.keys(lots)) if (e.lot && e.lot.split(' ').includes(k)) lots[k] = 0; if (e.product) { manual[e.product] = 0; delete shorts[e.product]; } break;
+        case 'line_short': if (e.product) shorts[e.product] = { found: e.before, ordered: e.target }; break;
+        case 'line_unshort': if (e.product) delete shorts[e.product]; break;
+        case 'order_verified': ended = { status: 'verified', at: e.timestamp, picker: e.picker, picked: e.before, target: e.target }; break;
+        case 'order_short': ended = { status: 'short', at: e.timestamp, picker: e.picker, picked: e.before, target: e.target, detail: e.detail }; break;
+        case 'order_complete': if (!ended || ended.status === 'issues') ended = { status: 'complete', at: e.timestamp, picker: e.picker, picked: e.before, target: e.target }; break;
+        case 'order_issues': ended = { status: 'issues', at: e.timestamp, picker: e.picker, picked: e.before, target: e.target, detail: e.detail }; break;
+        case 'order_cleared': ended = null; for (const k of Object.keys(lots)) lots[k] = 0; break;
+      }
+    }
+    const picked = Object.values(lots).reduce((s, n) => s + num(n), 0) + Object.values(manual).reduce((s, n) => s + num(n), 0);
+    if (!picked && !ended) return null;
+    return { lots, manual, shorts, ended, picked, lastActivity, picker };
+  } catch (e) { return null; }
+}
 
 // Open shortages from the event log: line_short not withdrawn (line_unshort / line_reset) since, newest first.
 function openShortages(days = 14) {
