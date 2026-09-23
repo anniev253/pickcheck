@@ -140,9 +140,17 @@
       const r = await fetch('/api/shortages?days=14', { credentials: 'same-origin' }).then(r => r.json()); if (r.error) throw new Error(r.error);
       const list = r.shortages || [];
       $('shortBox').style.display = list.length ? '' : 'none';
-      $('shortText').textContent = list.length + ' open in the last 14 days. Fix the quantity in Cultivera, then the line disappears here when the picker refreshes or the shortage is withdrawn.';
-      $('shortTable').innerHTML = '<tr><th>When</th><th>Order</th><th>Customer</th><th>Product</th><th>Lot</th><th class="n">Found / ordered</th><th>Picker</th><th>Order</th></tr>' +
-        list.map(s => '<tr><td>' + fmtTime(s.at) + '</td><td>ORD-' + esc(s.orderNo) + '</td><td>' + esc(s.customer) + '</td><td>' + esc(s.product) + '</td><td style="font-family:var(--mono);font-size:12px">' + esc(s.lot) + '</td><td class="n">' + s.found + ' / ' + s.ordered + '</td><td>' + esc(s.picker) + '</td><td>' + (s.orderDone ? '<span class="pill ok">finished</span>' : '<span class="pill warn">in progress</span>') + (s.quantityChanged ? ' <span class="pill">qty updated</span>' : '') + '</td></tr>').join('');
+      $('shortText').textContent = list.length + ' open in the last 14 days. A shortage clears by itself when the picker finds the units and the line reaches its quantity, or when the quantity is lowered in Cultivera and the gun refreshes. Resolve clears one by hand.';
+      $('shortTable').innerHTML = '<tr><th>When</th><th>Order</th><th>Customer</th><th>Product</th><th>Lot</th><th class="n">Found / ordered</th><th>Picker</th><th>Order</th><th></th></tr>' +
+        list.map(s => '<tr><td>' + fmtTime(s.at) + '</td><td>ORD-' + esc(s.orderNo) + '</td><td>' + esc(s.customer) + '</td><td>' + esc(s.product) + '</td><td style="font-family:var(--mono);font-size:12px">' + esc(s.lot) + '</td><td class="n">' + s.found + ' / ' + s.ordered + '</td><td>' + esc(s.picker) + '</td><td>' + (s.orderDone ? '<span class="pill ok">finished</span>' : '<span class="pill warn">in progress</span>') + (s.quantityChanged ? ' <span class="pill">qty updated</span>' : '') + '</td><td><button class="range-btn secondary" style="padding:4px 10px;font-size:12px" data-resolve="' + esc(s.orderNo) + '|' + esc(s.product) + '">Resolve</button></td></tr>').join('');
+      $('shortTable').querySelectorAll('[data-resolve]').forEach(b => b.onclick = async () => {
+        const [orderNo, product] = b.dataset.resolve.split('|');
+        if (!confirm('Clear this shortage?\n\nORD-' + orderNo + ' \u2014 ' + product + '\n\nUse this when the item was found or the order quantity was fixed.')) return;
+        b.disabled = true;
+        try { const r = await fetch('/api/shortages/resolve', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNo, product }) }).then(r => r.json()); if (r.error) throw new Error(r.error); }
+        catch (e) { alert('Could not resolve: ' + e.message); b.disabled = false; }
+        shortages();
+      });
     } catch (e) { /* leave hidden */ }
   }
   shortages(); setInterval(shortages, 60000);

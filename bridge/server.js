@@ -642,7 +642,9 @@ function orderHistory(orderNo) {
   } catch (e) { return null; }
 }
 
-// Open shortages from the event log: line_short not withdrawn (line_unshort / line_reset) since, newest first.
+// Open shortages from the event log, newest first. A shortage is over when the line was withdrawn or reset on the gun, when
+// the line later reached its quantity (scanned or counted), when the order was finished as verified (every line full), when the
+// order was finished short without that line in the short list, or when the office resolved it from the reports page.
 function openShortages(days = 14) {
   const to = localDay(Date.now()), from = localDay(Date.now() - days * 86400000);
   const ev = readEvents(from, to);
@@ -651,7 +653,9 @@ function openShortages(days = 14) {
   for (const e of ev) {
     if (e.event === 'line_short') state.set(key(e), { at: e.timestamp, orderNo: e.orderNo, customer: e.customer, product: e.product, lot: e.lot, found: e.before, ordered: e.target, picker: e.picker, orderDone: false, resolved: false });
     else if (e.event === 'line_unshort' || e.event === 'line_reset') { const s = state.get(key(e)); if (s) s.resolved = true; }
-    else if (e.event === 'order_short' || e.event === 'order_verified' || e.event === 'order_issues') for (const s of state.values()) if (s.orderNo === e.orderNo) s.orderDone = e.event !== 'order_issues';
+    else if ((e.event === 'scan_ok' || e.event === 'count_set') && e.target > 0 && e.after >= e.target) { const s = state.get(key(e)); if (s && e.timestamp > s.at) s.resolved = true; }
+    else if (e.event === 'order_verified') for (const s of state.values()) if (s.orderNo === e.orderNo && e.timestamp > s.at) { s.orderDone = true; s.resolved = true; }
+    else if (e.event === 'order_short' || e.event === 'order_issues') for (const s of state.values()) if (s.orderNo === e.orderNo) { s.orderDone = e.event === 'order_short'; if (e.event === 'order_short' && e.timestamp > s.at && !(e.detail || '').includes(s.product + ' (lot')) s.resolved = true; }
     else if (e.event === 'order_refreshed') for (const s of state.values()) if (s.orderNo === e.orderNo && /quantities changed/.test(e.detail || '')) s.quantityChanged = true;
   }
   return [...state.values()].filter(s => !s.resolved).sort((a, b) => b.at.localeCompare(a.at));
@@ -827,6 +831,15 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/notify/status') return send(res, 200, notify.status());
       if (req.method === 'POST' && p === '/api/notify/test') return send(res, 200, await notify.test());
       if (p === '/api/shortages') return send(res, 200, { shortages: openShortages(Number(url.searchParams.get('days')) || 14) });
+      if (req.method === 'POST' && p === '/api/shortages/resolve') {                 // office clears a shortage from the reports page
+        const body = await readBody(req);
+        const orderNo = clip(body.orderNo, 12), product = clip(body.product, 120);
+        const s = openShortages(60).find(x => x.orderNo === orderNo && x.product === product);
+        if (!s) return send(res, 404, { error: 'That shortage is not open (already resolved?)' });
+        appendEvents([{ ts: Date.now(), picker: 'office', orderNo, customer: s.customer, event: 'line_unshort', product, lot: s.lot, before: s.found, after: s.found, target: s.ordered, detail: 'resolved from the reports page' }]);
+        log('Shortage resolved from reports: ORD-' + orderNo + ' ' + product);
+        return send(res, 200, { ok: true, shortages: openShortages(14) });
+      }
       if (req.method === 'POST' && p === '/api/settings/notify') {
         const body = await readBody(req);
         const patch = { notify: {} };

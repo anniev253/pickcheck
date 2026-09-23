@@ -522,6 +522,7 @@ const App = (() => {
       || prevLines.find(p => p.allocs.some(x => l.allocs.some(a => a.barcodes.some(b => x.barcodes.includes(b)))))
       || prevLines.find(p => p.name === l.name && p.qty === l.qty);
     // One tile per lot: a Cultivera line allocated from two lots becomes two lines, each with its own barcode and count.
+    const qtyResolved = [];
     const expanded = [];
     for (const l of raw.lines) {
       if (l.allocs.length <= 1) { expanded.push(l); continue; }
@@ -541,7 +542,7 @@ const App = (() => {
         })
       };
       if (h) { if (!line.allocs.length && h.manual[l.name] != null) line.manual = Number(h.manual[l.name]) || 0; if (h.shorts[l.name]) line.short = true; }
-      if (line.short && linePicked(line) >= lineTarget(line)) line.short = false;   // the office reduced the quantity: no longer short
+      if (line.short && linePicked(line) >= lineTarget(line)) { line.short = false; qtyResolved.push(line); }   // the office reduced the quantity: no longer short
       return line;
     });
     const total = lines => lines.reduce((s, l) => s + Math.min(linePicked(l), lineTarget(l)), 0);
@@ -554,7 +555,20 @@ const App = (() => {
       if (end && (end.status === "verified" || end.status === "short")) { finished = true; doneNotified = true; }
       restored = { at: end ? end.at : h.lastActivity, picker: h.picker, status: end ? end.status : "in progress", picked: total(lines) };
     }
-    return { id: raw.id, orderNo: raw.orderNo, customer: raw.customer, status: raw.status, cancelled: raw.cancelled, fetchedAt: raw.fetchedAt, finished, doneNotified, restored, lines };
+    return { id: raw.id, orderNo: raw.orderNo, customer: raw.customer, status: raw.status, cancelled: raw.cancelled, fetchedAt: raw.fetchedAt, finished, doneNotified, restored, lines, qtyResolved };
+  }
+
+  // A declared shortage is over when the line reaches its quantity (item found, or the office lowered the quantity in
+  // Cultivera). Logging line_unshort takes it off the Shortages list on the reports page.
+  function resolveShort(l, why) {
+    if (!l.short || linePicked(l) < lineTarget(l)) return;
+    l.short = false;
+    logEvent('line_unshort', { product: l.name, lot: l.allocs.map(a => a.barcodes[0]).join(' '), before: linePicked(l), after: linePicked(l), target: lineTarget(l), detail: why });
+  }
+  function logQtyResolved() {
+    const list = (order && order.qtyResolved) || [];
+    for (const l of list) logEvent('line_unshort', { product: l.name, lot: l.allocs.map(a => a.barcodes[0]).join(' '), before: linePicked(l), after: linePicked(l), target: lineTarget(l), detail: 'quantity changed in Cultivera to ' + lineTarget(l) + ' — no longer short' });
+    if (order) order.qtyResolved = [];
   }
 
   async function loadOrder(input) {
@@ -567,6 +581,7 @@ const App = (() => {
       const raw = await bridge('/api/order/' + no);
       order = normalizeOrder(raw, state.orders[no]);
       state.orders[no] = order; state.active = no;
+      logQtyResolved();
       state.recent = [no, ...state.recent.filter(x => x !== no)].slice(0, 8);
       save(); beep(true);
       logEvent('order_loaded', { before: order.lines.length, target: order.lines.reduce((s, l) => s + lineTarget(l), 0), detail: order.status + (order.restored ? ' — restored from log: ' + order.restored.status + ', ' + order.restored.picked + ' units' : '') });
@@ -582,6 +597,7 @@ const App = (() => {
       const before = order.lines.reduce((s, l) => s + lineTarget(l), 0);
       order = normalizeOrder(raw, order);
       state.orders[order.orderNo] = order; save(); renderPick();
+      logQtyResolved();
       const after = order.lines.reduce((s, l) => s + lineTarget(l), 0);
       logEvent('order_refreshed', { before: order.lines.length, target: after, detail: order.status + (after !== before ? ' — quantities changed ' + before + ' → ' + after : '') });
       $('lastScan').textContent = '↻ Refreshed from Cultivera (' + order.status + ')' + (after !== before ? ' — quantities updated' : '');
@@ -729,8 +745,9 @@ const App = (() => {
     if (!hit) { result(false, 'Wrong item', text + ' is not on this order'); beep(false); logEvent('scan_rejected', { lot: text, detail: 'not on order' }); return; }
     if (hit.a.picked >= hit.a.qty) { result(false, 'Already complete', hit.l.name + ' — all ' + hit.a.qty + ' picked for this lot'); beep(false); revealLine(hit.li); logEvent('scan_rejected', { product: hit.l.name, lot: text, before: hit.a.picked, after: hit.a.picked, target: hit.a.qty, detail: 'lot already complete' }); return; }
     if (hit.l.mode === 'count') { result(true, 'Item OK', hit.l.name + ' — enter the count'); beep(true); openSheet(hit.li, hit.ai); return; }
-    hit.a.picked++; hit.l.short = false;
+    hit.a.picked++;
     logEvent('scan_ok', { product: hit.l.name, lot: hit.a.barcodes[0], before: hit.a.picked - 1, after: hit.a.picked, target: hit.a.qty });
+    resolveShort(hit.l, 'item found — line fully picked');   // a short line stays short until it is full (a partial find needs no second email)
     save(); renderPick();
     result(true, linePicked(hit.l) + ' / ' + lineTarget(hit.l) + (lineDone(hit.l) ? ' — line complete' : ''), hit.l.name);
     if (orderComplete() && !order.doneNotified) checkOrderDone(); else { beep(true); setTimeout(() => revealLine(hit.li), 0); }
@@ -802,7 +819,7 @@ const App = (() => {
       logEvent('count_set', { product: l.name, lot: ai >= 0 ? l.allocs[ai].barcodes[0] : '', before, after: n, target });
       if (ai >= 0) { l.allocs[ai].picked = n; l.mode = 'count'; } else { l.manual = n; }
       if (n > target) { beep(false); alert('That is MORE than expected (' + target + '). Double-check the count.'); } else if (!orderComplete()) beep(true);
-      if (linePicked(l) >= lineTarget(l)) l.short = false;
+      resolveShort(l, 'item found — counted ' + n);
       const li = sheetLineIdx;
       save(); renderPick(); closeSheet();
       checkOrderDone();
