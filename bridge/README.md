@@ -244,6 +244,8 @@ events queue on the gun and send when it reconnects.
 
 ## Bridge API (used by the gun app and the reports page)
 
+- `GET /rebrand` - the sales team's rebrand photo checklist (page built by `Rebrand Audit\tools\checklist.js --site`;
+  ticks are shared and stored in `data/rebrand-state.json` via `GET/POST /api/rebrand`, same sign-in as the pick app)
 - `GET /api/health` - bridge and Cultivera session status
 - `GET /api/order/15537` - normalized pick list for order 15537
 - `GET /api/search?q=155` - order-number suggestions
