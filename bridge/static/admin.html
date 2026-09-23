@@ -67,7 +67,7 @@
       <button class="range-btn secondary" id="mailToggle">Settings</button>
     </div>
     <div id="mailForm" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
-      <div class="muted" style="margin-bottom:8px">When the picker marks a line short, the bridge emails the details (order, product, lot, found/ordered) and a link to the Cultivera order. It sends from a mailbox you provide. Easiest: a Gmail address with an <b>app password</b> (Google Account → Security → 2-Step Verification → App passwords); server smtp.gmail.com, port 465.</div>
+      <div class="muted" style="margin-bottom:8px">When the picker marks a line short, the bridge emails the details (order, product, lot, found/ordered) and a link to the Cultivera order. It sends from a mailbox you provide. Easiest: a Gmail address with an <b>App Password</b> — not the account's normal password, which Gmail rejects (535 BadCredentials). Get one at <a href="https://myaccount.google.com/apppasswords" target="_blank">myaccount.google.com/apppasswords</a> (2-Step Verification must be on first); paste the 16-character code here, spaces or not. Server smtp.gmail.com, port 465.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <input id="mailHost" placeholder="SMTP server (smtp.gmail.com)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;min-width:200px">
         <input id="mailPort" placeholder="Port (465)" style="font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;width:100px">

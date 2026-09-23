@@ -562,7 +562,7 @@ function smtpSend(o) {
       }
       await cmd('AUTH LOGIN', [334], 'AUTH');
       await cmd(Buffer.from(o.user).toString('base64'), [334], 'AUTH (username)');
-      await cmd(Buffer.from(o.password).toString('base64'), [235], 'sign-in (check the email password / app password)');
+      await cmd(Buffer.from(String(o.password || '').replace(/s+/g, '')).toString('base64'), [235], 'sign-in (Gmail needs a 16-character App Password, not the account password)');
       await cmd('MAIL FROM:<' + (o.from || o.user) + '>', [250]);
       for (const t of to) await cmd('RCPT TO:<' + t + '>', [250, 251]);
       await cmd('DATA', [354]);
@@ -832,7 +832,7 @@ const server = http.createServer(async (req, res) => {
         const patch = { notify: {} };
         for (const k of ['host', 'user', 'from', 'to']) if (typeof body[k] === 'string') patch.notify[k] = body[k].trim();
         if (body.port) patch.notify.port = Number(body.port) || 465;
-        if (typeof body.password === 'string' && body.password) patch.notify.password = body.password;
+        if (typeof body.password === 'string' && body.password.trim()) patch.notify.password = body.password.replace(/s+/g, ''); // Google shows app passwords as 'abcd efgh ijkl mnop'; the spaces are not part of it
         if (typeof body.enabled === 'boolean') patch.notify.enabled = body.enabled;
         saveConfigPatch(patch); Object.assign(cfg.notify, patch.notify);
         log('Email settings saved (' + (cfg.notify.enabled ? 'enabled' : 'disabled') + ', to ' + (cfg.notify.to || 'nobody') + ')');
