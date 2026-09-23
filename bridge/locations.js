@@ -237,8 +237,11 @@ function create(cfg, log) {
   function lookup(line) {
     if (!index) return null;
     const pname = ' ' + norm(line.name) + ' ', strain = norm(line.strain), ltype = norm(line.type);
-    // Does a sheet row's item name belong to this product? (exact strain, phrase in the product name, or a truncated sheet name)
-    const rowNameFits = e => !e.name || (strain && e.name === strain) || pname.includes(' ' + e.name + ' ') || (e.name.length >= 6 && (strain.startsWith(e.name) || pname.includes(' ' + e.name)));
+    // Does a sheet row belong to this product? Same item name (exact strain, phrase in the product name, or a truncated
+    // sheet name) AND, when the row carries a product type, the same product line.
+    const rowNameFits = e => (!e.name || (strain && e.name === strain) || pname.includes(' ' + e.name + ' ') || (e.name.length >= 6 && (strain.startsWith(e.name) || pname.includes(' ' + e.name))))
+      && (!e.type || sameLineType(e.type));
+    const sameLineType = t => { const a = normType(t).replace(/\s*\b(vape|vapes|vaporizer|vaporizers)\b\s*$/, '').trim(), b = norm(productLine(line.name, line.strain)).replace(/\s*\b(vape|vapes|vaporizer|vaporizers)\b\s*$/, '').trim(); return !!a && !!b && a === b; };
     const lots = {};
     for (const a of line.allocs || []) {
       for (const bc of a.barcodes) {
@@ -257,13 +260,18 @@ function create(cfg, log) {
     }
     const restricted = !!line.sample || overstockOnly.some(t => pname.includes(' ' + t + ' '));
     let slot = null, slotScore = 0, over = null, overScore = 0;
-    const wordsIn = t => !t || t.split(' ').every(w => pname.includes(' ' + w + ' '));
+    // The product's own line ("live resin cartridge", "honey crystal", "neon vaporizer"), from its Cultivera name.
+    const pline = norm(productLine(line.name, line.strain));
+    // A sheet row's type must be the SAME product line, not merely share words: "live resin" must not claim a
+    // "live resin cartridge". Trailing vape/vaporizer is ignored on both sides ("lr stick vape" = "live resin stick").
+    const core = t => norm(t).replace(/\s*\b(vape|vapes|vaporizer|vaporizers)\b\s*$/, '').trim();
+    const sameLine = t => { const a = core(t), b = core(pline); return !!a && !!b && a === b; };
     for (const e of index.entries) {
       // exact strain, the strain phrase inside the product name, or a truncated sheet name ("bubblegum gelat") that starts the strain
       const nameHit = (strain && e.name === strain) || pname.includes(' ' + e.name + ' ') || (e.name.length >= 6 && (strain.startsWith(e.name) || pname.includes(' ' + e.name)));
       if (!nameHit) continue;
-      // every word of the sheet's product type (or of the tab name) must appear in the product name, or match Cultivera's type field
-      const typeHit = wordsIn(e.type) || wordsIn(e.sheetType) || (ltype && ltype.includes(e.type));
+      // the row's product type (or its tab name) must be this product's line, or equal Cultivera's type field when present
+      const typeHit = sameLine(e.type) || sameLine(e.sheetType) || (ltype && core(ltype) === core(e.type));
       if (!typeHit) continue;
       const score = e.name.length * 2 + e.type.length + (strain === e.name ? 5 : 0);
       if (norm(e.sheet) === overstockSheet) { if (score > overScore) { over = e; overScore = score; } }
