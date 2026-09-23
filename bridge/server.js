@@ -741,6 +741,16 @@ function rollback() {
 }
 function restartSoon() { setTimeout(() => process.exit(0), 700); }   // the service wrapper (NSSM) or start.cmd starts it again
 
+// ---------------------------------------------------------------- rebrand checklist (/rebrand): who ticked what, kept in data/
+const REBRAND_FILE = path.join(DATA_DIR, 'rebrand-state.json');
+function rebrandState() { try { return JSON.parse(fs.readFileSync(REBRAND_FILE, 'utf8')); } catch (e) { return { done: {} }; } }
+function rebrandTick(id, done, by) {
+  const s = rebrandState(); s.done = s.done || {};
+  if (done) s.done[id] = { at: localDay(Date.now()), by }; else delete s.done[id];
+  fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(REBRAND_FILE, JSON.stringify(s));
+  return s;
+}
+
 // ---------------------------------------------------------------- HTTP server
 const STATIC_DIR = path.join(ROOT, 'static');
 const MIME = { '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.css': 'text/css', '.js': 'text/javascript', '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.gz': 'application/gzip' };
@@ -767,6 +777,7 @@ const server = http.createServer(async (req, res) => {
     if (isGet && (p === '/' || p === '/pickcheck.html' || p === '/index.html')) return page(res, APP_HTML);
     if (isGet && p === '/reports') return page(res, REPORTS_HTML);
     if (isGet && p === '/admin') return page(res, path.join(STATIC_DIR, 'admin.html'));   // lives in static/ so the updater ships it
+    if (isGet && p === '/rebrand') return page(res, path.join(ROOT, 'rebrand.html'));    // sales team's rebrand photo checklist (built by the Rebrand Audit tools)
     if (isGet && /^\/picklist\/\d+$/.test(p)) return page(res, path.join(ROOT, 'picklist.html'));
     if (isGet && p.startsWith('/static/')) {
       const file = path.join(STATIC_DIR, path.basename(p));
@@ -791,6 +802,13 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/')) {
       if (!authorized(req, url)) return send(res, 401, { error: 'Sign in required.', signInRequired: true });
       let m;
+      if (p === '/api/rebrand') {                                          // shared ticks for /rebrand
+        if (isGet) return send(res, 200, rebrandState());
+        if (req.method !== 'POST') return send(res, 405, { error: 'POST or GET' });
+        const body = await readBody(req);
+        if (typeof body.id !== 'string' || !/^(central|sent|swapped):[a-z0-9-]{1,80}$/.test(body.id)) return send(res, 400, { error: 'bad id' });
+        return send(res, 200, rebrandTick(body.id, !!body.done, String(body.by || '').slice(0, 40)));
+      }
       if (req.method === 'POST' && p === '/api/events') {
         const body = await readBody(req);
         const events = sanitizeEvents(body.events);
