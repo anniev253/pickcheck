@@ -343,6 +343,7 @@ function buildStats(events) {
     const o = orders[e.orderNo] ||= { orderNo: e.orderNo, customer: e.customer, picker: e.picker, first: t, last: t, finished: null, status: 'in progress', lines: 0, targetUnits: 0, units: 0, scans: 0, rejected: 0, counts: 0, shorts: 0 };
     if (t < o.first) o.first = t; if (t > o.last) o.last = t;
     if (e.customer && !o.customer) o.customer = e.customer;
+    const sync = () => { if (e.target > 0 || e.before > 0) { d.units += e.before - o.units; o.units = e.before; } };
     switch (e.event) {
       case 'order_loaded': d.ordersStarted.add(e.orderNo); o.lines = e.before; o.targetUnits = e.target; break;
       case 'order_refreshed': o.lines = e.before; o.targetUnits = e.target; break;
@@ -351,9 +352,12 @@ function buildStats(events) {
       case 'line_reset': d.units -= e.before; o.units -= e.before; break;
       case 'scan_rejected': d.rejected++; o.rejected++; break;
       case 'line_short': d.shorts++; o.shorts++; break;
-      case 'order_complete': if (!o.finished) { o.finished = t; o.status = 'complete'; } break;
-      case 'order_verified': d.ordersVerified.add(e.orderNo); o.finished = t; o.status = 'verified'; break;
-      case 'order_issues': o.finished = t; o.status = 'finished with issues'; break;
+      // When the gun finishes an order it reports its own tally ("before" = units picked as the order stands now). Trust that
+      // over the running scan total: a lot swapped in Cultivera or a line reset and re-scanned would otherwise count twice.
+      case 'order_complete': sync(); if (!o.finished) { o.finished = t; o.status = 'complete'; } break;
+      case 'order_verified': sync(); d.ordersVerified.add(e.orderNo); o.finished = t; o.status = 'verified'; break;
+      case 'order_short': sync(); o.finished = t; o.status = 'finished short'; break;
+      case 'order_issues': sync(); o.finished = t; o.status = 'finished with issues'; break;
       case 'order_cleared': if (o.status === 'in progress') o.status = 'cleared'; break;
     }
   }

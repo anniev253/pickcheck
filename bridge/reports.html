@@ -108,7 +108,7 @@
         stats.days.map(d => '<tr><td>' + d.day + '</td><td class="n">' + d.ordersStarted + '</td><td class="n">' + d.ordersVerified + '</td><td class="n">' + d.units + '</td><td class="n">' + d.scans + '</td><td class="n">' + d.rejected + '</td><td class="n">' + d.counts + '</td><td class="n">' + d.shorts + '</td></tr>').join('')
       : '<tr><td class="empty">No picks in this range.</td></tr>';
 
-    const pill = s => '<span class="pill ' + (s === 'verified' ? 'ok' : s === 'in progress' ? 'warn' : s === 'cleared' ? '' : 'err') + '">' + esc(s) + '</span>';
+    const pill = s => '<span class="pill ' + (s === 'verified' ? 'ok' : s === 'in progress' || s === 'finished short' ? 'warn' : s === 'cleared' ? '' : 'err') + '">' + esc(s) + '</span>';
     $('orders').innerHTML = stats.orders.length
       ? '<tr><th>Order</th><th>Customer</th><th>Picker</th><th>Started</th><th>Finished</th><th class="n">Minutes</th><th class="n">Lines</th><th class="n">Units / target</th><th class="n">Rejected</th><th>Status</th></tr>' +
         stats.orders.map(o => '<tr><td>ORD-' + esc(o.orderNo) + '</td><td>' + esc(o.customer) + '</td><td>' + esc(o.picker) + '</td><td>' + fmtTime(o.first) + '</td><td>' + (o.finished ? fmtTime(o.finished) : '—') + '</td><td class="n">' + (o.minutes == null ? '—' : o.minutes) + '</td><td class="n">' + o.lines + '</td><td class="n">' + o.units + ' / ' + o.targetUnits + '</td><td class="n">' + o.rejected + '</td><td>' + pill(o.status) + '</td></tr>').join('')
