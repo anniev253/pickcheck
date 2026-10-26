@@ -12,7 +12,8 @@
  *   "locations": {
  *     "file": "C:\\Users\\me\\OneDrive - Oleum Labs\\Inventory Key.xlsx",   // local (synced) path, OR
  *     "url":  "https://...?download=1",                                     // direct-download link
- *     "sheets": ["Honey Crystal", "Live Resin", "Overstock", "Neon"],   // tabs that are mapped; omit = every sheet
+ *     "sheets": ["Honey Crystal", "Live Resin", "Overstock", "Neon"],   // tabs that are mapped; omit = every sheet.
+ *                                                                       // Any tab with "overstock" in its name is always read.
  *     "nameColumn": "Item Name",       // strain / item name column
  *     "typeColumn": "Product Type",    // optional
  *     "barcodeColumn": "Barcode",      // optional: full lot barcode (or its last 4+ digits) -> exact per-lot location
@@ -57,7 +58,8 @@ function readXlsx(buf, sheetName) {
   const wb = get('xl/workbook.xml'), rels = get('xl/_rels/workbook.xml.rels');
   let sheets = [...wb.matchAll(/<sheet [^>]*?name="([^"]*)"[^>]*?r:id="([^"]*)"/g)].map(m => ({ name: decodeXml(m[1]), rid: m[2] }));
   const wanted = (Array.isArray(sheetName) ? sheetName : (sheetName ? [sheetName] : [])).map(s => String(s).toLowerCase().trim()).filter(Boolean);
-  if (wanted.length) sheets = sheets.filter(s => wanted.includes(s.name.toLowerCase().trim()));
+  // Overstock tabs are always read, even when not listed: the warehouse adds one per shelf ("SC Overstock" for sugar cones).
+  if (wanted.length) sheets = sheets.filter(s => wanted.includes(s.name.toLowerCase().trim()) || /overstock/i.test(s.name));
   if (!sheets.length) throw new Error(wanted.length ? 'none of the sheets ' + wanted.join(', ') + ' were found in the workbook' : 'workbook has no sheets');
   return sheets.map(sh => {
     const target = (rels.match(new RegExp('<Relationship [^>]*?Id="' + sh.rid + '"[^>]*?Target="([^"]*)"')) || rels.match(new RegExp('<Relationship [^>]*?Target="([^"]*)"[^>]*?Id="' + sh.rid + '"')) || [])[1];
@@ -139,6 +141,7 @@ const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function productLine(name, strain) {
   let s = String(name || '');
   s = s.replace(/\*[^*]*\*?/g, ' ');                                   // *DOH*, *DOH
+  s = s.replace(/\bDOH\b/gi, ' ');                                      // bare DOH (Cultivera sometimes drops the asterisks)
   s = s.replace(/\([^)]*\)/g, ' ');                                     // (100mg THC)
   if (strain) s = s.replace(new RegExp('^\\s*' + escapeRe(String(strain).trim()) + '(?=\\s|$)', 'i'), ' ');
   s = s.replace(/\b\d+(\.\d+)?\s*(g|mg|ml|oz|kg|lb)s?\b/gi, ' ');        // 1.0g, 100mg
@@ -226,8 +229,10 @@ function create(cfg, log) {
     catch (e) { lastError = e.message; log('Locations: ' + e.message); }
   }
 
-  // Product families that have no fixed slot: they only get a location when the Overstock tab lists them.
+  // Product families that have no fixed slot: they only get a location when an Overstock tab lists them. Every tab whose
+  // name contains the word counts ("Overstock", "SC Overstock").
   const overstockSheet = norm(cfg.overstockSheet || 'overstock');
+  const isOverstock = sheet => norm(sheet).includes(overstockSheet);
   const overstockOnly = (cfg.overstockOnlyTypes || ['sugar cone', 'liquid diamond', 'live resin cartridge', 'live resin stick', 'cured resin stick', 'cured diamond', 'momo']).map(norm);
 
   // Location for a pick-list line, in order of confidence:
@@ -241,7 +246,13 @@ function create(cfg, log) {
     // sheet name) AND, when the row carries a product type, the same product line.
     const rowNameFits = e => (!e.name || (strain && e.name === strain) || pname.includes(' ' + e.name + ' ') || (e.name.length >= 6 && (strain.startsWith(e.name) || pname.includes(' ' + e.name))))
       && (!e.type || sameLineType(e.type));
-    const sameLineType = t => { const a = normType(t).replace(/\s*\b(vape|vapes|vaporizer|vaporizers)\b\s*$/, '').trim(), b = norm(productLine(line.name, line.strain)).replace(/\s*\b(vape|vapes|vaporizer|vaporizers)\b\s*$/, '').trim(); return !!a && !!b && a === b; };
+    const sameLineType = t => { const a = core(t), b = core(pline); return !!a && !!b && a === b; };
+    // The product's own line ("live resin cartridge", "honey crystal", "neon vaporizer"), from its Cultivera name.
+    const pline = norm(productLine(line.name, line.strain));
+    // A sheet row's type must be the SAME product line, not merely share words: "live resin" must not claim a
+    // "live resin cartridge". Trailing vape/vaporizer, pack counts and sizes are ignored on both sides
+    // ("lr stick vape" = "live resin stick", "sugar cone 2 pack" = "sugar cone").
+    const core = t => normType(productLine(t, '')).replace(/\s*\b(vape|vapes|vaporizer|vaporizers)\b\s*$/, '').trim();
     const lots = {};
     for (const a of line.allocs || []) {
       for (const bc of a.barcodes) {
@@ -260,11 +271,6 @@ function create(cfg, log) {
     }
     const restricted = !!line.sample || overstockOnly.some(t => pname.includes(' ' + t + ' '));
     let slot = null, slotScore = 0, over = null, overScore = 0;
-    // The product's own line ("live resin cartridge", "honey crystal", "neon vaporizer"), from its Cultivera name.
-    const pline = norm(productLine(line.name, line.strain));
-    // A sheet row's type must be the SAME product line, not merely share words: "live resin" must not claim a
-    // "live resin cartridge". Trailing vape/vaporizer is ignored on both sides ("lr stick vape" = "live resin stick").
-    const core = t => norm(t).replace(/\s*\b(vape|vapes|vaporizer|vaporizers)\b\s*$/, '').trim();
     const sameLine = t => { const a = core(t), b = core(pline); return !!a && !!b && a === b; };
     for (const e of index.entries) {
       // exact strain, the strain phrase inside the product name, or a truncated sheet name ("bubblegum gelat") that starts the strain
@@ -274,7 +280,7 @@ function create(cfg, log) {
       const typeHit = sameLine(e.type) || sameLine(e.sheetType) || (ltype && core(ltype) === core(e.type));
       if (!typeHit) continue;
       const score = e.name.length * 2 + e.type.length + (strain === e.name ? 5 : 0);
-      if (norm(e.sheet) === overstockSheet) { if (score > overScore) { over = e; overScore = score; } }
+      if (isOverstock(e.sheet)) { if (score > overScore) { over = e; overScore = score; } }
       else if (!restricted && score > slotScore) { slot = e; slotScore = score; }
     }
     const parts = [slot && slot.loc, over && over.loc].filter(Boolean);
