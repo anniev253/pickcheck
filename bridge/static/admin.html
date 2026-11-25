@@ -176,7 +176,7 @@
   };
   $('erpTest').onclick = async () => {
     $('erpResult').textContent = 'Signing in to the ERP…';
-    try { const r = await post('/api/erp/test'); $('erpResult').textContent = 'Connected as ' + r.email + (r.canWrite ? ' — allowed to edit deliveries.' : ' — NOT allowed to edit deliveries (account not matched to a CRM user).'); }
+    try { const r = await post('/api/erp/test'); $('erpResult').textContent = 'Connected as ' + r.email + (r.canWrite ? ' — allowed to edit deliveries.' : ' — NOT allowed to edit deliveries (account not matched to a CRM user).') + (r.tables === 'legacy' ? ' (old CRM database)' : ''); }
     catch (e) { $('erpResult').textContent = 'Test failed: ' + e.message; }
   };
   $('erpCheck').onclick = async () => {

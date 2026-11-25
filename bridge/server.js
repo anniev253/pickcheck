@@ -37,7 +37,7 @@ function loadConfig() {
   if (out.updates.autoHour != null && !(c.updates && c.updates.auto)) out.updates.auto = 'hour';
   // ERP link: mark the order "Picked" on production.oleumlabs.com/sales/deliveries when the gun completes it.
   out.erp = Object.assign({
-    enabled: false, email: '', password: '', markOn: 'complete',
+    enabled: false, email: '', password: '', markOn: 'complete', crmTables: 'auto',
     mainUrl: 'https://kzpgmyqcpnyjtswfelty.supabase.co',
     mainAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6cGdteXFjcG55anRzd2ZlbHR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NzM2NDYsImV4cCI6MjA5MTM0OTY0Nn0.5bjb12avK7leOCQpZeJPEYH7pYZkufqwwJE4CDLrx-c',
     crmUrl: 'https://jbnnajhsedncqtaeuyok.supabase.co',
@@ -438,12 +438,17 @@ function signOut(req, res) {
   return send(res, 200, { ok: true });
 }
 
-// ---------------------------------------------------------------- ERP link (Oleum ERP deliveries page)
-// Mirrors what "Mark picked" does on production.oleumlabs.com/sales/deliveries: sign in to the ERP as a user, get a
-// CRM token from the ERP's crm-read-session function, then update crm_deliveries.pick_status for the order.
+// ---------------------------------------------------------------- ERP link (Oleum Hub deliveries page)
+// Mirrors what "Mark picked" does on production.oleumlabs.com/sales/deliveries: sign in to the Hub as a user and update
+// crm_deliveries.pick_status for the order.
+// Where crm_deliveries lives: since Nov 2026 (the "Oleum Hub" rename) the Hub keeps its crm_* tables in its MAIN Supabase
+// project and reads/writes them there with the user's own session. Before that they lived in a separate CRM project,
+// reached with a token from the crm-read-session function. That old project still accepts writes, but the Hub no longer
+// looks at it. erp.crmTables: "auto" (default: main project if it has the table, else the old CRM project), "local", "legacy".
 const erp = (() => {
   let main = null;       // { accessToken, refreshToken, exp, email }
   let crm = null;        // { token, exp, email, matched }
+  let mode = null;       // where crm_deliveries lives: 'local' (Hub main project) or 'legacy' (separate CRM project)
   let last = null;       // last outcome, for the reports page
   const marked = new Map();   // orderNo -> ISO time, this process
   const c = () => cfg.erp;
@@ -469,10 +474,29 @@ const erp = (() => {
     if (!crm.matched) throw new Error('The ERP account ' + main.email + ' is signed in but is not allowed to edit CRM data (not matched to a CRM user).');
     return crm;
   }
+  async function mainSession() { if (!main || Date.now() > main.exp - 60000) await signIn(); return main; }
+  // Decide once per sign-in which project holds crm_deliveries.
+  async function target() {
+    const pref = c().crmTables || 'auto';
+    if (pref === 'local' || pref === 'legacy') return pref;
+    if (mode) return mode;
+    const m = await mainSession();
+    const r = await fetch(c().mainUrl + '/rest/v1/crm_deliveries?select=order_number&limit=1', { signal: AbortSignal.timeout(20000), headers: { apikey: c().mainAnonKey, Authorization: 'Bearer ' + m.accessToken } });
+    if (r.ok) mode = 'local';
+    else if (r.status === 404) mode = 'legacy';                    // table not in the main project: the old layout
+    else { const j = await r.json().catch(() => null); throw new Error('Hub crm_deliveries check failed: ' + (j && (j.message || j.error) || ('HTTP ' + r.status))); }
+    log('ERP: deliveries table is in the ' + (mode === 'local' ? 'Hub main project' : 'separate CRM project (legacy)'));
+    return mode;
+  }
+  // The signed-in identity that edits deliveries (recorded in updated_by).
+  async function who() { return (await target()) === 'local' ? (await mainSession()).email : (await crmSession()).email; }
   async function crmFetch(pathname, opts = {}, retry = true) {
-    const s = await crmSession();
-    const r = await fetch(c().crmUrl + '/rest/v1/' + pathname, { ...opts, signal: AbortSignal.timeout(20000),
-      headers: { apikey: c().crmAnonKey, Authorization: 'Bearer ' + s.token, 'Content-Type': 'application/json', Prefer: 'return=representation', ...(opts.headers || {}) } });
+    const where = await target();
+    let url, key, token;
+    if (where === 'local') { const m = await mainSession(); url = c().mainUrl; key = c().mainAnonKey; token = m.accessToken; }
+    else { const s = await crmSession(); url = c().crmUrl; key = c().crmAnonKey; token = s.token; }
+    const r = await fetch(url + '/rest/v1/' + pathname, { ...opts, signal: AbortSignal.timeout(20000),
+      headers: { apikey: key, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Prefer: 'return=representation', ...(opts.headers || {}) } });
     if (r.status === 401 && retry) { crm = null; main = null; return crmFetch(pathname, opts, false); }
     const j = await r.json().catch(() => null);
     if (!r.ok) throw new Error('CRM ' + pathname.split('?')[0] + ' ' + (j && (j.message || j.error) || ('HTTP ' + r.status)));
@@ -493,7 +517,7 @@ const erp = (() => {
     return { rows: rows || [], total: null };
   }
   // Returns {ok, status, message}. Never throws: callers log the outcome.
-  async function markPicked(orderNo, why) {
+  async function markPicked(orderNo, why, at) {
     const no = String(orderNo).replace(/\D/g, '');
     try {
       if (!c().enabled) return record(no, { ok: false, status: 'disabled', message: 'ERP link is turned off' });
@@ -502,9 +526,9 @@ const erp = (() => {
       if (!row) return record(no, { ok: false, status: 'not_scheduled', message: 'ORD-' + no + ' is not on the ERP deliveries calendar, so there is nothing to mark' });
       if (row.pick_status === 'picked' || row.pick_status === 'picked_up') return record(no, { ok: true, status: 'already', message: 'ORD-' + no + ' was already ' + row.pick_status.replace('_', ' ') + ' in the ERP' });
       const now = new Date().toISOString();
-      const s = await crmSession();
-      const patch = { pick_status: 'picked', picked_at: now, picked_up_at: null, updated_by: s.email, updated_at: now };
-      if (/shortages:/.test(why)) { const note = 'SHORT (gun): ' + why.replace(/^.*shortages:\s*/, ''); patch.notes = ((row.notes || '') + (row.notes ? '\n' : '') + note).slice(0, 1000); }
+      const pickedAt = at && !isNaN(Date.parse(at)) ? new Date(at).toISOString() : now;   // a catch-up mark keeps the gun's real finish time
+      const patch = { pick_status: 'picked', picked_at: pickedAt, picked_up_at: null, updated_by: await who(), updated_at: now };
+      if (/shortages:/.test(why)) { const note = 'SHORT (gun): ' + why.replace(/^.*shortages:\s*/, ''); if (!String(row.notes || '').includes(note)) patch.notes = ((row.notes || '') + (row.notes ? '\n' : '') + note).slice(0, 1000); }
       const upd = await crmFetch('crm_deliveries?order_number=eq.' + encodeURIComponent(row.order_number), { method: 'PATCH', body: JSON.stringify(patch) });
       if (!upd || !upd.length) return record(no, { ok: false, status: 'no_row', message: 'The ERP did not accept the update for ORD-' + no });
       marked.set(no, now);
@@ -519,14 +543,16 @@ const erp = (() => {
   }
   async function test() {
     if (!configured()) throw httpError(400, 'Enter the ERP email and password first.');
-    main = null; crm = null;
-    const s = await crmSession();
-    return { ok: true, email: main.email, crmEmail: s.email, canWrite: s.matched };
+    main = null; crm = null; mode = null;
+    const where = await target();
+    if (where === 'legacy') { const s = await crmSession(); return { ok: true, email: main.email, crmEmail: s.email, canWrite: s.matched, tables: where }; }
+    await crmFetch('crm_deliveries?select=order_number&limit=1');          // proves the Hub lets this login read deliveries
+    return { ok: true, email: main.email, crmEmail: main.email, canWrite: true, tables: where };
   }
   function status() {
-    return { enabled: !!c().enabled, configured: configured(), email: c().email || '', markOn: c().markOn, signedIn: !!(main && Date.now() < main.exp), crmEmail: crm ? crm.email : null, canWrite: crm ? crm.matched : null, last };
+    return { enabled: !!c().enabled, configured: configured(), email: c().email || '', markOn: c().markOn, signedIn: !!(main && Date.now() < main.exp), crmEmail: crm ? crm.email : (mode === 'local' && main ? main.email : null), canWrite: mode === 'local' ? true : (crm ? crm.matched : null), tables: mode, last };
   }
-  function reset() { main = null; crm = null; }
+  function reset() { main = null; crm = null; mode = null; }
   return { markPicked, readDelivery, readRecent, test, status, reset, configured };
 })();
 
@@ -857,7 +883,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (p === '/api/erp/status') return send(res, 200, erp.status());
       if (req.method === 'POST' && p === '/api/erp/test') return send(res, 200, await erp.test());
-      if (req.method === 'POST' && (m = p.match(/^\/api\/erp\/mark\/(\d+)$/))) return send(res, 200, await erp.markPicked(m[1], 'marked from the reports page'));
+      if (req.method === 'POST' && (m = p.match(/^\/api\/erp\/mark\/(\d+)$/))) { const b = await readBody(req).catch(() => ({})); return send(res, 200, await erp.markPicked(m[1], clip(b.why, 400) || 'marked from the reports page', b.at)); }
       if ((m = p.match(/^\/api\/erp\/delivery\/(\d+)$/))) { const row = await erp.readDelivery(m[1]); return send(res, 200, { delivery: row }); }
       if (p === '/api/erp/recent') return send(res, 200, await erp.readRecent());
       if (req.method === 'POST' && p === '/api/settings/erp') {
