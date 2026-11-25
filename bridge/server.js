@@ -553,7 +553,7 @@ const erp = (() => {
     return { enabled: !!c().enabled, configured: configured(), email: c().email || '', markOn: c().markOn, signedIn: !!(main && Date.now() < main.exp), crmEmail: crm ? crm.email : (mode === 'local' && main ? main.email : null), canWrite: mode === 'local' ? true : (crm ? crm.matched : null), tables: mode, last };
   }
   function reset() { main = null; crm = null; mode = null; }
-  return { markPicked, readDelivery, readRecent, test, status, reset, configured };
+  return { markPicked, readDelivery, readRecent, test, status, reset, configured, where: target };
 })();
 
 // ---------------------------------------------------------------- email (minimal SMTP client, no dependencies)
@@ -881,7 +881,7 @@ const server = http.createServer(async (req, res) => {
         log('Email settings saved (' + (cfg.notify.enabled ? 'enabled' : 'disabled') + ', to ' + (cfg.notify.to || 'nobody') + ')');
         return send(res, 200, notify.status());
       }
-      if (p === '/api/erp/status') return send(res, 200, erp.status());
+      if (p === '/api/erp/status') { let catchUp = null; try { catchUp = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'erp-catchup-2026-11.json'), 'utf8')); } catch (e) {} return send(res, 200, { ...erp.status(), catchUp }); }
       if (req.method === 'POST' && p === '/api/erp/test') return send(res, 200, await erp.test());
       if (req.method === 'POST' && (m = p.match(/^\/api\/erp\/mark\/(\d+)$/))) { const b = await readBody(req).catch(() => ({})); return send(res, 200, await erp.markPicked(m[1], clip(b.why, 400) || 'marked from the reports page', b.at)); }
       if ((m = p.match(/^\/api\/erp\/delivery\/(\d+)$/))) { const row = await erp.readDelivery(m[1]); return send(res, 200, { delivery: row }); }
@@ -948,6 +948,36 @@ function lanAddresses() {
 }
 
 // Listen on both IPv4 and IPv6 ("localhost" resolves to ::1 for some clients, including the tunnel service).
+// One-time catch-up for the Hub's move of crm_deliveries into its main project (Nov 2026). Until this version, finished
+// orders were marked in the old CRM project, which the Hub had stopped reading, so the calendar kept saying "Not picked".
+// Re-mark the orders the gun finished that are still upcoming and still not picked in the Hub, with the gun's real finish
+// time. Runs once: data/erp-catchup-2026-11.json records it, so later restarts leave the Hub alone and a pick someone
+// undid on purpose stays undone.
+async function erpCatchUp() {
+  const marker = path.join(DATA_DIR, 'erp-catchup-2026-11.json');
+  if (!cfg.erp.enabled || !erp.configured() || fs.existsSync(marker)) return;
+  if (await erp.where() !== 'local') return;                       // old layout: the marks already went to the right place
+  const today = localDay(Date.now());
+  const trigger = cfg.erp.markOn === 'verified' ? /^(order_verified|order_short)$/ : /^(order_complete|order_verified|order_short)$/;
+  const finished = new Map();                                      // order -> its latest finish event
+  for (const e of readEvents(localDay(Date.now() - 21 * 86400000), today)) if (trigger.test(e.event) && e.orderNo && e.picker !== 'bridge') finished.set(String(e.orderNo), e);
+  const out = { at: new Date().toISOString(), checked: 0, marked: [], alreadyPicked: 0, past: 0, notOnCalendar: 0, failed: [] };
+  for (const [no, e] of finished) {
+    try {
+      const row = await erp.readDelivery(no); out.checked++;
+      if (!row) { out.notOnCalendar++; continue; }
+      if (row.pick_status === 'picked' || row.pick_status === 'picked_up') { out.alreadyPicked++; continue; }
+      const day = String(row.scheduled_date || row.delivery_date || '').slice(0, 10);
+      if (!day || day < today) { out.past++; continue; }             // already out the door: leave old records alone
+      const r = await erp.markPicked(no, e.event === 'order_short' ? 'gun finished the order with shortages: ' + (e.detail || '') : 'gun completed the order', e.timestamp);
+      if (r.ok) out.marked.push(no); else out.failed.push(no + ': ' + r.message);
+    } catch (err) { out.failed.push(no + ': ' + err.message); }
+  }
+  log('ERP catch-up: ' + out.marked.length + ' marked picked in the Hub, ' + out.alreadyPicked + ' already picked, ' + out.past + ' past, ' + out.notOnCalendar + ' not on the calendar, ' + out.failed.length + ' failed');
+  // Record it only when the Hub answered for every order; otherwise try again on the next start.
+  if (out.checked === finished.size && !out.failed.length) fs.writeFileSync(marker, JSON.stringify(out, null, 2));
+}
+
 server.listen(cfg.port, '::', async () => {
   console.log('\nPick Check bridge listening on port ' + cfg.port);
   console.log('Open on the gun:');
@@ -962,6 +992,7 @@ server.listen(cfg.port, '::', async () => {
   const warmLots = () => openOrders().then(list => Promise.all(list.filter(o => o.ready).map(o => rawPickList(o.id).catch(() => null)))).then(() => log('Lot index ready (' + openCache.list.length + ' open orders)')).catch(e => log('Lot index: ' + e.message));
   setTimeout(warmLots, 3000);
   setInterval(warmLots, 4 * 60 * 1000);
+  setTimeout(() => erpCatchUp().catch(e => log('ERP catch-up: ' + e.message)), 45000);
   // Unattended updates. "idle": check GitHub every 10 minutes and install a pending update once the gun has been idle
   // for updates.idleMinutes. "hour": only during updates.autoHour. "manual": never (reports page only).
   if (cfg.updates.repo) {
